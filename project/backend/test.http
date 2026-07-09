@@ -1,0 +1,15 @@
+### Test envoi message WhatsApp
+
+
+POST https://graph.facebook.com/v25.0/1242743348916607/messages
+Authorization: Bearer EAATFB9PwKBUBR0fRFSC51HYPLQZCEBVHtbMQm2MeLf3luNRYn8sZBqdZCNMqfsl2Diwgjl3E3fFsaXG8HZADHvBsWAIkExcz4c7XLP3SF9RkUZBasryYfv8cS4BDZAQWxmzHjemHlWx0niy8KtbDZCD2JPILTHj4ed7aOswj7T1pAXhFcZBFMDlFtHr9zDnnPwZDZD
+Content-Type: application/json
+
+{
+    "messaging_product": "whatsapp",
+    "to": "+237680687360",
+    "type": "text",
+    "text": {
+        "body": "Bonjour depuis Yamobiz 🚀"
+    }
+}
