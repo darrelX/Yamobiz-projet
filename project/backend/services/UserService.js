@@ -1,6 +1,6 @@
 import { supabase } from "../lib/supabase.js";
 
-/**
+/**biien
  * Recherche un utilisateur par son numéro WhatsApp.
  */
 export async function getUserByPhone(phone) {
