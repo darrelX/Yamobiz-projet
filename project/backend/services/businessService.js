@@ -1,6 +1,26 @@
 import { supabase } from "../lib/supabase.js";
 
 
+export async function getBusinessByPhone(phone) {
+
+    const { data: business, error } = await supabase
+        .from("businesses")
+        .select("*")
+        .eq("phone", phone)
+        .maybeSingle();
+
+
+    if(error){
+        console.log("Erreur recherche entreprise :", error);
+        return null;
+    }
+
+
+    return business;
+}
+
+
+
 export async function createBusiness(data){
 
     const { data: business, error } = await supabase

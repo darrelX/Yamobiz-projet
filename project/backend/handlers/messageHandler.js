@@ -1,11 +1,14 @@
-import { getBusinessByPhone } from "../services/businessService.js";
 import { sendWhatsAppMessage } from "../services/whatsapp.js";
-import {
+import { 
     getConversation,
     createConversation,
     updateConversation
 } from "../services/conversationService.js";
-import { createBusiness } from "../services/businessService.js";
+import { 
+    getBusinessByPhone,
+    createBusiness 
+} from "../services/businessService.js";
+
 
 export async function handleMessage(message) {
 
@@ -20,19 +23,25 @@ export async function handleMessage(message) {
         console.log("Numéro absent");
         return;
     }
+
+
     const text = message.text;
 
     console.log("Message reçu :", phone, text);
 
 
+
+    // Vérifier si l'entreprise existe déjà
     const business = await getBusinessByPhone(phone);
+
 
 
     // Entreprise existante
     if (business) {
+
         return sendWhatsAppMessage(
             phone,
-            `Bonjour ${business.name} 👋
+`Bonjour ${business.name} 👋
 
 Que voulez-vous faire ?
 
@@ -44,7 +53,10 @@ Que voulez-vous faire ?
     }
 
 
+
+
     let conversation = await getConversation(phone);
+
 
 
     // Nouveau utilisateur
@@ -52,24 +64,36 @@ Que voulez-vous faire ?
 
         await createConversation(phone);
 
-        await updateConversation(phone, "BUSINESS_NAME", {});
+        await updateConversation(
+            phone,
+            "BUSINESS_NAME",
+            {}
+        );
 
         return sendWhatsAppMessage(
             phone,
-            `Bienvenue sur Yamobiz 👋
+`Bienvenue sur Yamobiz 👋
 
 Quel est le nom de votre entreprise ?`
         );
     }
 
 
+
+
     switch (conversation.step) {
 
+
         case "BUSINESS_NAME":
-            await updateConversation(phone, "CITY", {
-                ...conversation.data,
-                businessName: text
-            });
+
+            await updateConversation(
+                phone,
+                "CITY",
+                {
+                    ...conversation.data,
+                    businessName: text
+                }
+            );
 
             return sendWhatsAppMessage(
                 phone,
@@ -77,11 +101,17 @@ Quel est le nom de votre entreprise ?`
             );
 
 
+
         case "CITY":
-            await updateConversation(phone, "SECTOR", {
-                ...conversation.data,
-                city: text
-            });
+
+            await updateConversation(
+                phone,
+                "SECTOR",
+                {
+                    ...conversation.data,
+                    city: text
+                }
+            );
 
             return sendWhatsAppMessage(
                 phone,
@@ -120,8 +150,7 @@ Quel est le nom de votre entreprise ?`
 
             return sendWhatsAppMessage(
                 phone,
-
-                `🎉 Félicitations !
+`🎉 Félicitations !
 
 Votre entreprise ${newBusiness.name} est maintenant créée sur Yamobiz.
 
@@ -135,7 +164,10 @@ Que voulez-vous faire ?
 4️⃣ Analyse`
             );
 
+
+
         default:
+
             return sendWhatsAppMessage(
                 phone,
                 "Veuillez recommencer l'inscription."
