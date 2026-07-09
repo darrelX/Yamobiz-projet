@@ -1,22 +1,22 @@
 import { supabase } from "../lib/supabase.js";
 
 
+/**
+ * Récupérer une conversation par numéro WhatsApp
+ */
+export async function getConversation(phone) {
 
-export async function getConversation(phone){
-
-
-    const { data, error } = await supabase
+    const { data: conversation, error } = await supabase
         .from("conversations")
         .select("*")
         .eq("phone", phone)
         .maybeSingle();
 
 
-
-    if(error){
+    if (error) {
 
         console.log(
-            "Erreur récupération conversation :",
+            "❌ Erreur récupération conversation :",
             error
         );
 
@@ -24,26 +24,25 @@ export async function getConversation(phone){
     }
 
 
-    return data;
-
+    return conversation;
 }
 
 
 
+/**
+ * Créer une nouvelle conversation
+ */
+export async function createConversation(phone) {
 
-
-export async function createConversation(phone){
-
-
-    const { data, error } = await supabase
+    const { data: conversation, error } = await supabase
         .from("conversations")
         .insert({
 
             phone,
 
-            step:"START",
+            step: "BUSINESS_NAME",
 
-            data:{}
+            data: {}
 
         })
         .select()
@@ -51,10 +50,10 @@ export async function createConversation(phone){
 
 
 
-    if(error){
+    if (error) {
 
         console.log(
-            "Erreur création conversation :",
+            "❌ Erreur création conversation :",
             error
         );
 
@@ -62,42 +61,190 @@ export async function createConversation(phone){
     }
 
 
-
-    return data;
-
+    return conversation;
 }
 
 
 
+/**
+ * Mettre à jour uniquement l'étape
+ */
+export async function updateStep(phone, step) {
 
 
-export async function updateConversation(
-    phone,
-    step,
-    data
-){
-
-
-    const { error } = await supabase
+    const { data, error } = await supabase
         .from("conversations")
         .update({
 
             step,
 
-            data
+            updated_at: new Date()
 
         })
+        .eq("phone", phone)
+        .select()
+        .single();
+
+
+
+    if (error) {
+
+        console.log(
+            "❌ Erreur mise à jour étape :",
+            error
+        );
+
+        return null;
+    }
+
+
+    return data;
+}
+
+
+
+/**
+ * Mettre à jour uniquement les données JSON
+ */
+export async function updateData(phone, data) {
+
+
+    const { data: conversation, error } = await supabase
+        .from("conversations")
+        .update({
+
+            data,
+
+            updated_at: new Date()
+
+        })
+        .eq("phone", phone)
+        .select()
+        .single();
+
+
+
+    if (error) {
+
+        console.log(
+            "❌ Erreur mise à jour données :",
+            error
+        );
+
+        return null;
+    }
+
+
+    return conversation;
+}
+
+
+
+/**
+ * Mettre à jour étape + données
+ */
+export async function updateConversation(
+    phone,
+    step,
+    data
+) {
+
+
+    const { data: conversation, error } = await supabase
+        .from("conversations")
+        .update({
+
+            step,
+
+            data,
+
+            updated_at: new Date()
+
+        })
+        .eq("phone", phone)
+        .select()
+        .single();
+
+
+
+    if (error) {
+
+        console.log(
+            "❌ Erreur mise à jour conversation :",
+            error
+        );
+
+        return null;
+    }
+
+
+    return conversation;
+}
+
+
+
+/**
+ * Réinitialiser une conversation
+ */
+export async function resetConversation(phone) {
+
+
+    const { data, error } = await supabase
+        .from("conversations")
+        .update({
+
+            step: "BUSINESS_NAME",
+
+            data: {},
+
+            updated_at: new Date()
+
+        })
+        .eq("phone", phone)
+        .select()
+        .single();
+
+
+
+    if (error) {
+
+        console.log(
+            "❌ Erreur reset conversation :",
+            error
+        );
+
+        return null;
+    }
+
+
+    return data;
+}
+
+
+
+/**
+ * Supprimer une conversation
+ */
+export async function deleteConversation(phone) {
+
+
+    const { error } = await supabase
+        .from("conversations")
+        .delete()
         .eq("phone", phone);
 
 
 
-    if(error){
+    if (error) {
 
         console.log(
-            "Erreur update conversation :",
+            "❌ Erreur suppression conversation :",
             error
         );
 
+        return false;
     }
 
+
+    return true;
 }

@@ -1,7 +1,9 @@
 import { supabase } from "../lib/supabase.js";
 
-
-export async function getUserByPhone(phone){
+/**
+ * Recherche un utilisateur par son numéro WhatsApp.
+ */
+export async function getUserByPhone(phone) {
 
     const { data: user, error } = await supabase
         .from("users")
@@ -9,29 +11,19 @@ export async function getUserByPhone(phone){
         .eq("phone", phone)
         .maybeSingle();
 
-
-    if(error){
-        console.log("Erreur recherche utilisateur :", error);
+    if (error) {
+        console.log("❌ Erreur recherche utilisateur :", error);
         return null;
     }
-
 
     return user;
 }
 
 
-
-export async function createUser(phone){
-
-    // Vérifier si l'utilisateur existe déjà
-    const existingUser = await getUserByPhone(phone);
-
-
-    if(existingUser){
-        return existingUser;
-    }
-
-
+/**
+ * Crée un nouvel utilisateur.
+ */
+export async function createUser(phone) {
 
     const { data: user, error } = await supabase
         .from("users")
@@ -41,17 +33,20 @@ export async function createUser(phone){
         .select()
         .single();
 
-
-
-    if(error){
-        console.log("Erreur création utilisateur :", error);
+    if (error) {
+        console.log("❌ Erreur création utilisateur :", error);
         return null;
     }
 
-
     return user;
+}
 
-    export async function getOrCreateUser(phone) {
+
+/**
+ * Retourne un utilisateur s'il existe,
+ * sinon le crée automatiquement.
+ */
+export async function getOrCreateUser(phone) {
 
     let user = await getUserByPhone(phone);
 
@@ -59,8 +54,65 @@ export async function createUser(phone){
         return user;
     }
 
-    user = await createUser(phone);
+    return await createUser(phone);
+}
+
+
+/**
+ * Recherche un utilisateur par son id.
+ */
+export async function getUserById(id) {
+
+    const { data: user, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+
+    if (error) {
+        console.log("❌ Erreur recherche utilisateur :", error);
+        return null;
+    }
 
     return user;
 }
+
+
+/**
+ * Met à jour les informations d'un utilisateur.
+ */
+export async function updateUser(id, values) {
+
+    const { data: user, error } = await supabase
+        .from("users")
+        .update(values)
+        .eq("id", id)
+        .select()
+        .single();
+
+    if (error) {
+        console.log("❌ Erreur mise à jour utilisateur :", error);
+        return null;
+    }
+
+    return user;
+}
+
+
+/**
+ * Supprime un utilisateur.
+ */
+export async function deleteUser(id) {
+
+    const { error } = await supabase
+        .from("users")
+        .delete()
+        .eq("id", id);
+
+    if (error) {
+        console.log("❌ Erreur suppression utilisateur :", error);
+        return false;
+    }
+
+    return true;
 }
