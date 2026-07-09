@@ -5,7 +5,7 @@ import {
     createConversation,
     updateConversation
 } from "../services/conversationService.js";
-
+import { createBusiness } from "../services/businessService.js";
 
 export async function handleMessage(message) {
 
@@ -89,17 +89,51 @@ Quel est le nom de votre entreprise ?`
             );
 
 
+
         case "SECTOR":
-            await updateConversation(phone, "COMPLETED", {
+
+            const businessData = {
                 ...conversation.data,
-                sector: text
-            });
+                sector: text,
+                phone
+            };
+
+
+            const newBusiness = await createBusiness(businessData);
+
+
+            if (!newBusiness) {
+
+                return sendWhatsAppMessage(
+                    phone,
+                    "❌ Une erreur est survenue pendant la création."
+                );
+            }
+
+
+            await updateConversation(
+                phone,
+                "COMPLETED",
+                businessData
+            );
+
 
             return sendWhatsAppMessage(
                 phone,
-                "🎉 Votre entreprise Yamobiz est prête !"
-            );
 
+                `🎉 Félicitations !
+
+Votre entreprise ${newBusiness.name} est maintenant créée sur Yamobiz.
+
+Bienvenue dans votre espace de gestion 🚀
+
+Que voulez-vous faire ?
+
+1️⃣ Nouvelle vente
+2️⃣ Voir le stock
+3️⃣ Créances
+4️⃣ Analyse`
+            );
 
         default:
             return sendWhatsAppMessage(

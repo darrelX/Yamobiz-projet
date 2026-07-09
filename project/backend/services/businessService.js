@@ -1,48 +1,25 @@
 import { supabase } from "../lib/supabase.js";
 
 
-export async function getBusinessByPhone(phone) {
+export async function createBusiness(data){
 
-
-  const { data, error } = await supabase
-    .from("businesses")
-    .select("*")
-    .eq("phone", phone)
-    .maybeSingle();
-
-
-    if(error){
-
-        console.error(error);
-        return null;
-
-    }
-
-
-    return data;
-
-}
-
-
-
-export async function createBusiness(business){
-
-
-    const { data, error } = await supabase
+    const { data: business, error } = await supabase
         .from("businesses")
-        .insert(business)
+        .insert({
+            name: data.businessName,
+            phone: data.phone,
+            city: data.city,
+            sector: data.sector
+        })
         .select()
         .single();
 
 
     if(error){
-
-        console.error(error);
+        console.log("Erreur création entreprise :", error);
         return null;
-
     }
 
 
-    return data;
-
+    return business;
 }
