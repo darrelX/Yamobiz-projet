@@ -9,10 +9,17 @@ import {
 
 export async function handleMessage(message) {
 
-    const phone = message.from.startsWith("+")
-        ? message.from
-        : "+" + message.from;
+    const phone = message.phone
+        ? (message.phone.startsWith("+")
+            ? message.phone
+            : "+" + message.phone)
+        : null;
 
+
+    if (!phone) {
+        console.log("Numéro absent");
+        return;
+    }
     const text = message.text;
 
     console.log("Message reçu :", phone, text);
@@ -25,7 +32,7 @@ export async function handleMessage(message) {
     if (business) {
         return sendWhatsAppMessage(
             phone,
-`Bonjour ${business.name} 👋
+            `Bonjour ${business.name} 👋
 
 Que voulez-vous faire ?
 
@@ -49,7 +56,7 @@ Que voulez-vous faire ?
 
         return sendWhatsAppMessage(
             phone,
-`Bienvenue sur Yamobiz 👋
+            `Bienvenue sur Yamobiz 👋
 
 Quel est le nom de votre entreprise ?`
         );
