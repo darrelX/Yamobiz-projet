@@ -1,67 +1,103 @@
 import { supabase } from "../lib/supabase.js";
 
 
-export async function getConversation(phone) {
+
+export async function getConversation(phone){
+
 
     const { data, error } = await supabase
-        .from("whatsapp_sessions")
+        .from("conversations")
         .select("*")
-        .eq("phone_number", phone)
-        .single();
+        .eq("phone", phone)
+        .maybeSingle();
+
 
 
     if(error){
+
+        console.log(
+            "Erreur récupération conversation :",
+            error
+        );
+
         return null;
     }
 
+
     return data;
+
 }
+
+
 
 
 
 export async function createConversation(phone){
 
+
     const { data, error } = await supabase
-        .from("whatsapp_sessions")
+        .from("conversations")
         .insert({
-            phone_number: phone,
-            step: "START",
-            data: {}
+
+            phone,
+
+            step:"START",
+
+            data:{}
+
         })
         .select()
         .single();
 
 
+
     if(error){
-        console.log(error);
+
+        console.log(
+            "Erreur création conversation :",
+            error
+        );
+
         return null;
     }
 
 
+
     return data;
+
 }
 
 
 
-export async function updateConversation(phone, step, newData){
 
-    const { data, error } = await supabase
-        .from("whatsapp_sessions")
+
+export async function updateConversation(
+    phone,
+    step,
+    data
+){
+
+
+    const { error } = await supabase
+        .from("conversations")
         .update({
+
             step,
-            data: newData,
-            updated_at: new Date()
+
+            data
+
         })
-        .eq("phone_number", phone)
-        .select()
-        .single();
+        .eq("phone", phone);
+
 
 
     if(error){
-        console.log(error);
-        return null;
+
+        console.log(
+            "Erreur update conversation :",
+            error
+        );
+
     }
 
-
-    return data;
 }

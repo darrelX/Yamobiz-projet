@@ -1,14 +1,19 @@
 import { sendWhatsAppMessage } from "../services/whatsapp.js";
-import { 
+
+import {
     getConversation,
     createConversation,
     updateConversation
 } from "../services/conversationService.js";
-import { 
-    getBusinessByPhone,
-    createBusiness 
+
+import {
+    getBusinessByUserId,
+    createBusiness
 } from "../services/businessService.js";
 
+import {
+    getOrCreateUser
+} from "../services/userService.js";
 
 export async function handleMessage(message) {
 
@@ -18,30 +23,50 @@ export async function handleMessage(message) {
             : "+" + message.phone)
         : null;
 
-
     if (!phone) {
         console.log("Numéro absent");
         return;
     }
 
-
     const text = message.text;
 
     console.log("Message reçu :", phone, text);
 
+    // Créer ou récupérer l'utilisateur
+    const user = await getOrCreateUser(phone);
 
+    if (!user) {
 
-    // Vérifier si l'entreprise existe déjà
-    const business = await getBusinessByPhone(phone);
+        return sendWhatsAppMessage(
+            phone,
+            "❌ Impossible de créer votre compte."
+        );
+    }
 
+    const business = await getBusinessByUserId(user.id);
 
-
-    // Entreprise existante
     if (business) {
 
         return sendWhatsAppMessage(
             phone,
-`Bonjour ${business.name} 👋
+            `Bonjour ${business.name} 👋
+
+Que voulez-vous faire ?
+
+1️⃣ Nouvelle vente
+2️⃣ Voir le stock
+3️⃣ Créances
+4️⃣ Analyse`
+        );
+
+    }
+    // Vérifier si une entreprise existe déjà
+    const business = await getBusinessByUserId(user.id);
+
+    if (business) {
+        return sendWhatsAppMessage(
+            phone,
+            `Bonjour ${business.name} 👋
 
 Que voulez-vous faire ?
 
@@ -52,17 +77,12 @@ Que voulez-vous faire ?
         );
     }
 
-
-
-
+    // Récupérer ou créer la conversation
     let conversation = await getConversation(phone);
 
-
-
-    // Nouveau utilisateur
     if (!conversation) {
 
-        await createConversation(phone);
+        conversation = await createConversation(phone);
 
         await updateConversation(
             phone,
@@ -72,17 +92,13 @@ Que voulez-vous faire ?
 
         return sendWhatsAppMessage(
             phone,
-`Bienvenue sur Yamobiz 👋
+            `Bienvenue sur Yamobiz 👋
 
 Quel est le nom de votre entreprise ?`
         );
     }
 
-
-
-
     switch (conversation.step) {
-
 
         case "BUSINESS_NAME":
 
@@ -100,8 +116,6 @@ Quel est le nom de votre entreprise ?`
                 "Super 👍 Dans quelle ville se trouve votre entreprise ?"
             );
 
-
-
         case "CITY":
 
             await updateConversation(
@@ -118,8 +132,6 @@ Quel est le nom de votre entreprise ?`
                 "Quel est votre secteur d'activité ?"
             );
 
-
-
         case "SECTOR":
 
             const businessData = {
@@ -128,18 +140,17 @@ Quel est le nom de votre entreprise ?`
                 phone
             };
 
-
-            const newBusiness = await createBusiness(businessData);
-
+            const newBusiness = await createBusiness(
+                user.id,
+                businessData
+            );
 
             if (!newBusiness) {
-
                 return sendWhatsAppMessage(
                     phone,
-                    "❌ Une erreur est survenue pendant la création."
+                    "❌ Une erreur est survenue pendant la création de votre entreprise."
                 );
             }
-
 
             await updateConversation(
                 phone,
@@ -147,10 +158,9 @@ Quel est le nom de votre entreprise ?`
                 businessData
             );
 
-
             return sendWhatsAppMessage(
                 phone,
-`🎉 Félicitations !
+                `🎉 Félicitations !
 
 Votre entreprise ${newBusiness.name} est maintenant créée sur Yamobiz.
 
@@ -164,13 +174,19 @@ Que voulez-vous faire ?
 4️⃣ Analyse`
             );
 
-
-
         default:
+
+            await updateConversation(
+                phone,
+                "BUSINESS_NAME",
+                {}
+            );
 
             return sendWhatsAppMessage(
                 phone,
-                "Veuillez recommencer l'inscription."
+                `Bienvenue sur Yamobiz 👋
+
+Quel est le nom de votre entreprise ?`
             );
     }
 }
