@@ -1,7 +1,7 @@
 {
   "name": "yamobiz-backend",
   "version": "1.0.0",
-  "description": "Backend WhatsApp Bot - Yamobiz (ventes, stock, créances, factures PDF)",
+  "description": "Backend WhatsApp Bot - Yamobiz (ventes, stock, cr\u00e9ances, factures PDF)",
   "type": "module",
   "main": "src/server.js",
   "scripts": {
@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
+    "alasql": "^4.5.1",
     "axios": "^1.7.7",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
