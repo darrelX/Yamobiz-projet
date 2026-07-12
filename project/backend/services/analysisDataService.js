@@ -1,10 +1,5 @@
 import { supabase } from "../config/supabase.js";
 
-/**
- * Récupère toutes les données nécessaires à l'analyse pour UNE SEULE entreprise
- * (toujours filtrées par business_id côté serveur — jamais laissées au choix de l'IA).
- * Par défaut, on se limite aux 12 derniers mois pour rester raisonnable en volume.
- */
 export async function getBusinessDatasetForAnalysis(businessId, monthsBack = 12) {
 
     const since = new Date();

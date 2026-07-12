@@ -1,8 +1,5 @@
 import { supabase } from "../config/supabase.js";
 
-/**
- * Recherche un utilisateur par son numéro WhatsApp.
- */
 export async function getUserByPhone(phone) {
 
     const { data: user, error } = await supabase
@@ -19,9 +16,6 @@ export async function getUserByPhone(phone) {
     return user;
 }
 
-/**
- * Crée un nouvel utilisateur.
- */
 export async function createUser(phone) {
 
     const { data: user, error } = await supabase
@@ -38,9 +32,6 @@ export async function createUser(phone) {
     return user;
 }
 
-/**
- * Retourne un utilisateur s'il existe, sinon le crée automatiquement.
- */
 export async function getOrCreateUser(phone) {
 
     const user = await getUserByPhone(phone);
@@ -52,9 +43,6 @@ export async function getOrCreateUser(phone) {
     return await createUser(phone);
 }
 
-/**
- * Recherche un utilisateur par son id.
- */
 export async function getUserById(id) {
 
     const { data: user, error } = await supabase
@@ -71,9 +59,6 @@ export async function getUserById(id) {
     return user;
 }
 
-/**
- * Met à jour les informations d'un utilisateur (ex: name).
- */
 export async function updateUser(id, values) {
 
     const { data: user, error } = await supabase
@@ -91,9 +76,6 @@ export async function updateUser(id, values) {
     return user;
 }
 
-/**
- * Supprime un utilisateur.
- */
 export async function deleteUser(id) {
 
     const { error } = await supabase

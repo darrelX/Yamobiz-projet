@@ -6,7 +6,7 @@
 export const STEPS = {
 
     // --- Inscription / identification ---
-    NAME: "NAME",                 // nom de la personne (avant même l'entreprise)
+    NAME: "NAME",
     BUSINESS_NAME: "BUSINESS_NAME",
     CITY: "CITY",
     SECTOR: "SECTOR",
@@ -21,8 +21,9 @@ export const STEPS = {
     SALE_PAYMENT_TYPE: "SALE_PAYMENT_TYPE",
     SALE_CUSTOMER_NAME: "SALE_CUSTOMER_NAME",
     SALE_CONFIRM: "SALE_CONFIRM",
+    SALE_AI_REVIEW: "SALE_AI_REVIEW", // récap de ce que l'IA a compris depuis un message libre/vocal
 
-    // --- Stock (CRUD complet) ---
+    // --- Stock (CRUD complet + ajout en bloc) ---
     STOCK_MENU: "STOCK_MENU",
     STOCK_ADD_NAME: "STOCK_ADD_NAME",
     STOCK_ADD_PRICE: "STOCK_ADD_PRICE",
@@ -32,6 +33,7 @@ export const STEPS = {
     STOCK_EDIT_PRICE: "STOCK_EDIT_PRICE",
     STOCK_ADJUST_QTY: "STOCK_ADJUST_QTY",
     STOCK_DELETE_CONFIRM: "STOCK_DELETE_CONFIRM",
+    STOCK_ADD_BULK_REVIEW: "STOCK_ADD_BULK_REVIEW", // récap d'un ajout de stock en bloc détecté par l'IA
 
     // --- Créances ---
     DEBT_MENU: "DEBT_MENU",
@@ -65,7 +67,10 @@ export const STEPS = {
 
     // --- Analyse financière (résumé rapide + IA en langage naturel) ---
     ANALYSIS_MENU: "ANALYSIS_MENU",
-    ANALYSIS_AI_QUESTION: "ANALYSIS_AI_QUESTION"
+    ANALYSIS_AI_QUESTION: "ANALYSIS_AI_QUESTION",
+
+    // --- Suppression en bloc (produits, ventes, clients) détectée par l'IA ---
+    BULK_DELETE_REVIEW: "BULK_DELETE_REVIEW"
 
 };
 

@@ -13,10 +13,38 @@ const authHeaders = {
     "Content-Type": "application/json"
 };
 
+const MENU_BUTTON_ID = "menu";
+const MENU_BUTTON_TITLE = "🏠 Menu principal";
+
 /**
- * Envoie un message texte simple.
+ * Envoie un petit message-bouton "🏠 Menu principal", automatiquement accroché
+ * après (quasi) chaque réponse du bot, pour que l'utilisateur puisse revenir au
+ * menu principal en un tap depuis N'IMPORTE QUEL écran de l'application.
  */
-export async function sendWhatsAppMessage(phone, message) {
+async function sendMenuShortcut(phone) {
+    try {
+
+        const payload = {
+            messaging_product: "whatsapp",
+            to: phone,
+            type: "interactive",
+            interactive: {
+                type: "button",
+                body: { text: "🏠" },
+                action: {
+                    buttons: [{ type: "reply", reply: { id: MENU_BUTTON_ID, title: MENU_BUTTON_TITLE } }]
+                }
+            }
+        };
+
+        await axios.post(`${WHATSAPP_BASE_URL}/messages`, payload, { headers: authHeaders });
+
+    } catch (error) {
+        logWhatsAppError("bouton menu", error);
+    }
+}
+
+export async function sendWhatsAppMessage(phone, message, { skipMenuFooter = false } = {}) {
     try {
 
         console.log("📤 Envoi WhatsApp (texte) →", phone);
@@ -32,6 +60,10 @@ export async function sendWhatsAppMessage(phone, message) {
             { headers: authHeaders }
         );
 
+        if (!skipMenuFooter) {
+            await sendMenuShortcut(phone);
+        }
+
         return response.data;
 
     } catch (error) {
@@ -40,11 +72,7 @@ export async function sendWhatsAppMessage(phone, message) {
     }
 }
 
-/**
- * Envoie jusqu'à 3 boutons de réponse rapide ("Reply Buttons").
- * buttons: [{ id: string, title: string }] — title limité à 20 caractères par l'API.
- */
-export async function sendWhatsAppButtons(phone, bodyText, buttons, footer = null) {
+export async function sendWhatsAppButtons(phone, bodyText, buttons, footer = null, { skipMenuFooter = false } = {}) {
     try {
 
         console.log("📤 Envoi WhatsApp (boutons) →", phone);
@@ -71,6 +99,14 @@ export async function sendWhatsAppButtons(phone, bodyText, buttons, footer = nul
 
         const response = await axios.post(`${WHATSAPP_BASE_URL}/messages`, payload, { headers: authHeaders });
 
+        // Si "🏠 Menu principal" ne fait pas déjà partie des boutons affichés, on l'ajoute
+        // en message de suivi, pour qu'il soit accessible même depuis un écran à boutons.
+        const alreadyHasMenu = buttons.some(b => b.id === MENU_BUTTON_ID);
+
+        if (!skipMenuFooter && !alreadyHasMenu) {
+            await sendMenuShortcut(phone);
+        }
+
         return response.data;
 
     } catch (error) {
@@ -79,11 +115,7 @@ export async function sendWhatsAppButtons(phone, bodyText, buttons, footer = nul
     }
 }
 
-/**
- * Envoie une liste déroulante ("List Message"), utile au-delà de 3 options.
- * sections: [{ title: string, rows: [{ id, title, description? }] }] — max 10 lignes au total.
- */
-export async function sendWhatsAppList(phone, bodyText, buttonText, sections, footer = null) {
+export async function sendWhatsAppList(phone, bodyText, buttonText, sections, footer = null, { skipMenuFooter = false } = {}) {
     try {
 
         console.log("📤 Envoi WhatsApp (liste) →", phone);
@@ -108,6 +140,10 @@ export async function sendWhatsAppList(phone, bodyText, buttonText, sections, fo
 
         const response = await axios.post(`${WHATSAPP_BASE_URL}/messages`, payload, { headers: authHeaders });
 
+        if (!skipMenuFooter) {
+            await sendMenuShortcut(phone);
+        }
+
         return response.data;
 
     } catch (error) {
@@ -116,11 +152,6 @@ export async function sendWhatsAppList(phone, bodyText, buttonText, sections, fo
     }
 }
 
-/**
- * Envoie un document (ex: facture PDF) depuis un fichier local.
- * 1) Upload du fichier vers Meta pour obtenir un media_id
- * 2) Envoi du message "document" référençant ce media_id
- */
 export async function sendWhatsAppDocument(phone, filePath, filename, caption = "") {
     try {
 
@@ -156,9 +187,6 @@ export async function sendWhatsAppDocument(phone, filePath, filename, caption = 
     }
 }
 
-/**
- * Upload un fichier local vers l'API WhatsApp et retourne le media_id.
- */
 async function uploadWhatsAppMedia(filePath) {
     try {
 
@@ -187,12 +215,6 @@ async function uploadWhatsAppMedia(filePath) {
     }
 }
 
-/**
- * Télécharge un média envoyé par l'utilisateur (ex: photo du logo).
- * 1) Récupère l'URL temporaire + le type MIME depuis Meta
- * 2) Télécharge le contenu binaire
- * Retourne { buffer, mimeType } ou null en cas d'échec.
- */
 export async function downloadWhatsAppMedia(mediaId) {
     try {
 

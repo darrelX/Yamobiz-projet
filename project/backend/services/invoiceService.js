@@ -1,8 +1,5 @@
 import { supabase } from "../config/supabase.js";
 
-/**
- * Enregistre la référence d'une facture générée (numéro + chemin du PDF).
- */
 export async function createInvoiceRecord(businessId, { saleId, invoiceNumber, pdfPath }) {
 
     const { data, error } = await supabase
@@ -24,9 +21,6 @@ export async function createInvoiceRecord(businessId, { saleId, invoiceNumber, p
     return data;
 }
 
-/**
- * Récupère une facture par numéro.
- */
 export async function getInvoiceByNumber(invoiceNumber) {
 
     const { data, error } = await supabase
@@ -43,9 +37,6 @@ export async function getInvoiceByNumber(invoiceNumber) {
     return data;
 }
 
-/**
- * Supprime toutes les factures d'une entreprise (utilisé lors de la suppression du compte).
- */
 export async function deleteInvoicesByBusiness(businessId) {
 
     const { error } = await supabase

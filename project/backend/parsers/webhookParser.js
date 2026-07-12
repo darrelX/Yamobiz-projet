@@ -7,6 +7,9 @@
  * l'id du bouton ou de la ligne choisie est utilisé comme "text", ce qui
  * permet aux handlers existants (basés sur des choix numériques ou des
  * mots-clés) de fonctionner sans modification.
+ *
+ * Les messages vocaux (type "audio") sont laissés tels quels ici : c'est
+ * messageHandler qui se charge de les télécharger et de les transcrire.
  */
 export function parseWebhook(reqBody) {
 

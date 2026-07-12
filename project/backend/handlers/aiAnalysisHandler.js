@@ -7,9 +7,6 @@ import { generateChartImage } from "../services/chartService.js";
 import { generateAnalysisReportPdf } from "../services/reportService.js";
 import { showMainMenu } from "./menuHandler.js";
 
-/**
- * Affiche le menu Analyse : résumé rapide (existant) ou question libre à l'IA.
- */
 export async function showAnalysisMenu(phone, business) {
 
     await updateConversation(phone, STEPS.ANALYSIS_MENU, {});
@@ -66,9 +63,35 @@ async function handleAiQuestion(phone, text, business) {
         return sendWhatsAppMessage(phone, "❌ Merci de poser une question.");
     }
 
+    return runAiQuestionFlow(phone, business, text.trim());
+}
+
+/**
+ * Point d'entrée "analyse" détecté par l'IA depuis n'importe quelle rubrique de
+ * l'application (ex: "fais-moi une analyse de mes ventes ce mois"). Si une question
+ * précise a été comprise, on lance directement l'analyse en langage naturel ; sinon
+ * (demande générique du type "fais une analyse") on affiche le résumé rapide.
+ */
+export async function startAnalysisFromAi(phone, business, question) {
+
+    if (question && question.trim()) {
+        return runAiQuestionFlow(phone, business, question.trim());
+    }
+
+    return startAnalysis(phone, business);
+}
+
+/**
+ * Exécute le pipeline complet d'analyse en langage naturel (SQL généré par l'IA,
+ * résumé, graphique, rapport PDF) pour une question donnée, indépendamment de
+ * l'étape de conversation en cours. Utilisée à la fois par le flow scénarisé
+ * classique (ANALYSIS_AI_QUESTION) et par l'interception IA universelle.
+ */
+export async function runAiQuestionFlow(phone, business, question) {
+
     await sendWhatsAppMessage(phone, "🤖 Analyse en cours, un instant...");
 
-    const analysis = await runNaturalLanguageAnalysis(business, text.trim());
+    const analysis = await runNaturalLanguageAnalysis(business, question);
 
     if (analysis.error) {
         await resetToMenu(phone);

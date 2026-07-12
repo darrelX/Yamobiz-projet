@@ -7,9 +7,6 @@ import { STEPS } from "../utils/steps.js";
 import { formatFCFA, formatDateTime } from "../utils/format.js";
 import { showMainMenu } from "./menuHandler.js";
 
-/**
- * Affiche la liste des dernières commandes de l'entreprise.
- */
 export async function showOrderMenu(phone, business) {
 
     const sales = await getRecentSales(business.id, 10);

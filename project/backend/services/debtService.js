@@ -1,8 +1,5 @@
 import { supabase } from "../config/supabase.js";
 
-/**
- * Crée une créance liée à une vente à crédit.
- */
 export async function createDebt(businessId, { saleId, customerId, amountTotal }) {
 
     const { data, error } = await supabase
@@ -26,9 +23,6 @@ export async function createDebt(businessId, { saleId, customerId, amountTotal }
     return data;
 }
 
-/**
- * Liste les créances non soldées d'une entreprise, avec le nom du client.
- */
 export async function getOpenDebts(businessId) {
 
     const { data, error } = await supabase
@@ -46,9 +40,6 @@ export async function getOpenDebts(businessId) {
     return data;
 }
 
-/**
- * Récupère une créance par id (et vérifie l'appartenance à l'entreprise).
- */
 export async function getDebtById(id, businessId) {
 
     const { data, error } = await supabase
@@ -66,9 +57,6 @@ export async function getDebtById(id, businessId) {
     return data;
 }
 
-/**
- * Enregistre un paiement partiel ou total sur une créance.
- */
 export async function recordPayment(id, amountPaidNow) {
 
     const { data: debt, error: fetchError } = await supabase
@@ -104,9 +92,6 @@ export async function recordPayment(id, amountPaidNow) {
     return data;
 }
 
-/**
- * Calcule le total des créances non soldées d'une entreprise.
- */
 export async function getTotalOutstandingDebt(businessId) {
 
     const debts = await getOpenDebts(businessId);
@@ -117,9 +102,6 @@ export async function getTotalOutstandingDebt(businessId) {
     );
 }
 
-/**
- * Supprime la créance liée à une vente (utilisé lors de l'annulation d'une commande).
- */
 export async function deleteDebtBySaleId(saleId) {
 
     const { error } = await supabase
@@ -135,9 +117,6 @@ export async function deleteDebtBySaleId(saleId) {
     return true;
 }
 
-/**
- * Supprime toutes les créances d'une entreprise (utilisé lors de la suppression du compte).
- */
 export async function deleteDebtsByBusiness(businessId) {
 
     const { error } = await supabase

@@ -9,15 +9,6 @@ if (!fs.existsSync(INVOICES_DIR)) {
     fs.mkdirSync(INVOICES_DIR, { recursive: true });
 }
 
-/**
- * Génère un PDF de facture pour une vente et retourne son chemin local.
- * Inclut le logo de l'entreprise (si défini) et un petit badge "Yamobiz".
- *
- * @param {object} business  { name, city, phone, sector, logo_path }
- * @param {object} sale      { invoice_number, payment_type, total_amount, created_at }
- * @param {array}  items     [{ product_name, quantity, unit_price, subtotal }]
- * @param {object} customer  { name, phone } | null
- */
 export async function generateInvoicePdf(business, sale, items, customer) {
 
     const filePath = path.join(INVOICES_DIR, `${sale.invoice_number}.pdf`);
@@ -40,7 +31,6 @@ export async function generateInvoicePdf(business, sale, items, customer) {
             }
         }
 
-        // --- En-tête ---
         doc.fontSize(20).fillColor("#000").text(business.name || "Entreprise", headerX, 45, { align: "left" });
         doc.fontSize(10).fillColor("#555")
             .text(business.city || "", headerX, doc.y)
@@ -55,7 +45,6 @@ export async function generateInvoicePdf(business, sale, items, customer) {
 
         doc.moveDown();
 
-        // --- Client ---
         doc.fillColor("#000").fontSize(11).text(
             `Client : ${customer?.name || "Client comptant"}`,
             { align: "left" }
@@ -66,7 +55,6 @@ export async function generateInvoicePdf(business, sale, items, customer) {
 
         doc.moveDown(1.5);
 
-        // --- Tableau des articles ---
         const tableTop = doc.y;
         const col = { name: 50, qty: 260, price: 340, subtotal: 440 };
 
@@ -91,7 +79,6 @@ export async function generateInvoicePdf(business, sale, items, customer) {
 
         doc.moveTo(50, y + 5).lineTo(545, y + 5).strokeColor("#ccc").stroke();
 
-        // --- Total ---
         doc.font("Helvetica-Bold").fontSize(12)
             .text(`TOTAL : ${formatFCFA(sale.total_amount)}`, col.subtotal - 60, y + 20);
 
@@ -111,9 +98,6 @@ export async function generateInvoicePdf(business, sale, items, customer) {
     });
 }
 
-/**
- * Petit badge de marque "Yamobiz" en bas de page (l'app qui a généré le document).
- */
 function drawYamobizBadge(doc) {
     const x = 480;
     const y = 780;

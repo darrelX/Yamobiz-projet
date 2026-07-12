@@ -26,8 +26,6 @@ router.post("/", async (req, res) => {
 
     const message = parseWebhook(req.body);
 
-    // Répondre 200 immédiatement pour éviter les retries de Meta,
-    // puis traiter le message de façon asynchrone.
     res.sendStatus(200);
 
     if (message) {

@@ -2,16 +2,6 @@ import alasql from "alasql";
 import { askGemini } from "./geminiService.js";
 import { getBusinessDatasetForAnalysis } from "./analysisDataService.js";
 
-/**
- * Exécute une analyse en langage naturel pour UNE entreprise.
- *
- * Principe de sécurité : Gemini ne reçoit et ne peut jamais interroger la vraie
- * base Postgres. On charge d'abord, via des appels Supabase déjà filtrés par
- * business_id, un jeu de données borné à cette seule entreprise, dans des
- * tables en mémoire (alasql). Le SQL généré par l'IA n'est exécuté que contre
- * cette copie en mémoire : même une requête malveillante ou mal formée ne peut
- * ni toucher la vraie base, ni sortir du périmètre de l'entreprise.
- */
 export async function runNaturalLanguageAnalysis(business, question) {
 
     const dataset = await getBusinessDatasetForAnalysis(business.id);
@@ -111,10 +101,6 @@ function buildSchemaDescription() {
 - debts(id, sale_id, customer_id, amount_total, amount_paid, status, created_at)`;
 }
 
-/**
- * Nettoie et valide le SQL renvoyé par l'IA avant toute exécution
- * (même en sandbox mémoire, on refuse tout ce qui n'est pas un simple SELECT).
- */
 function sanitizeGeneratedSql(raw) {
 
     let sql = raw.trim();

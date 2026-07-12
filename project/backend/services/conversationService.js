@@ -1,9 +1,6 @@
 import { supabase } from "../config/supabase.js";
 import { STEPS } from "../utils/steps.js";
 
-/**
- * Récupère une conversation par numéro WhatsApp.
- */
 export async function getConversation(phone) {
 
     const { data: conversation, error } = await supabase
@@ -20,9 +17,6 @@ export async function getConversation(phone) {
     return conversation;
 }
 
-/**
- * Crée une nouvelle conversation.
- */
 export async function createConversation(phone) {
 
     const { data: conversation, error } = await supabase
@@ -43,9 +37,6 @@ export async function createConversation(phone) {
     return conversation;
 }
 
-/**
- * Récupère la conversation, ou la crée si elle n'existe pas encore.
- */
 export async function getOrCreateConversation(phone) {
 
     const conversation = await getConversation(phone);
@@ -57,9 +48,6 @@ export async function getOrCreateConversation(phone) {
     return await createConversation(phone);
 }
 
-/**
- * Met à jour uniquement l'étape.
- */
 export async function updateStep(phone, step) {
 
     const { data, error } = await supabase
@@ -77,9 +65,6 @@ export async function updateStep(phone, step) {
     return data;
 }
 
-/**
- * Met à jour uniquement les données JSON.
- */
 export async function updateData(phone, data) {
 
     const { data: conversation, error } = await supabase
@@ -97,9 +82,6 @@ export async function updateData(phone, data) {
     return conversation;
 }
 
-/**
- * Met à jour étape + données en une seule fois.
- */
 export async function updateConversation(phone, step, data) {
 
     const { data: conversation, error } = await supabase
@@ -117,17 +99,10 @@ export async function updateConversation(phone, step, data) {
     return conversation;
 }
 
-/**
- * Réinitialise une conversation vers le menu principal (après inscription
- * ou après une action terminée), en conservant l'historique dans `data` en option.
- */
 export async function resetToMenu(phone) {
     return updateConversation(phone, STEPS.MENU, {});
 }
 
-/**
- * Réinitialise complètement une conversation (retour à l'inscription).
- */
 export async function resetConversation(phone) {
 
     const { data, error } = await supabase
@@ -149,9 +124,6 @@ export async function resetConversation(phone) {
     return data;
 }
 
-/**
- * Supprime une conversation.
- */
 export async function deleteConversation(phone) {
 
     const { error } = await supabase

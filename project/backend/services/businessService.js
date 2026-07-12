@@ -1,9 +1,5 @@
 import { supabase } from "../config/supabase.js";
 
-/**
- * Retourne LA PREMIÈRE entreprise d'un utilisateur (conservé pour compatibilité,
- * préférer getBusinessesByUserId pour le support multi-entreprises).
- */
 export async function getBusinessByUserId(userId) {
 
     const { data: business, error } = await supabase
@@ -22,9 +18,6 @@ export async function getBusinessByUserId(userId) {
     return business;
 }
 
-/**
- * Retourne TOUTES les entreprises d'un utilisateur (support multi-entreprises).
- */
 export async function getBusinessesByUserId(userId) {
 
     const { data, error } = await supabase
@@ -41,9 +34,6 @@ export async function getBusinessesByUserId(userId) {
     return data || [];
 }
 
-/**
- * Recherche une entreprise par son id.
- */
 export async function getBusinessById(id) {
 
     const { data: business, error } = await supabase
@@ -60,9 +50,6 @@ export async function getBusinessById(id) {
     return business;
 }
 
-/**
- * Crée une entreprise (un utilisateur peut en posséder plusieurs).
- */
 export async function createBusiness(userId, data) {
 
     const { data: business, error } = await supabase
@@ -86,9 +73,6 @@ export async function createBusiness(userId, data) {
     return business;
 }
 
-/**
- * Met à jour une entreprise (nom, ville, secteur, logo...).
- */
 export async function updateBusiness(id, values) {
 
     const { data: business, error } = await supabase
@@ -106,9 +90,6 @@ export async function updateBusiness(id, values) {
     return business;
 }
 
-/**
- * Supprime une entreprise.
- */
 export async function deleteBusiness(id) {
 
     const { error } = await supabase
@@ -124,9 +105,6 @@ export async function deleteBusiness(id) {
     return true;
 }
 
-/**
- * Liste toutes les entreprises (utile pour l'administration).
- */
 export async function getBusinesses() {
 
     const { data, error } = await supabase

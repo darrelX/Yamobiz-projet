@@ -5,10 +5,6 @@ import { formatFCFA } from "../utils/format.js";
 import { resetToMenu } from "../services/conversationService.js";
 import { showMainMenu } from "./menuHandler.js";
 
-/**
- * Construit et envoie un résumé d'activité (jour / semaine / mois).
- * Le menu principal reste actif ensuite (pas d'étape intermédiaire nécessaire).
- */
 export async function startAnalysis(phone, business) {
 
     const now = new Date();

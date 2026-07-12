@@ -21,10 +21,6 @@ import { deleteInvoicesByBusiness } from "../services/invoiceService.js";
 import { STEPS } from "../utils/steps.js";
 import { showMainMenu } from "./menuHandler.js";
 
-/**
- * Affiche les informations de l'entreprise active + les options de gestion,
- * y compris le support multi-entreprises (changer, ajouter, supprimer).
- */
 export async function showCompanyMenu(phone, business, user) {
 
     await updateConversation(phone, STEPS.COMPANY_MENU, {});
@@ -56,6 +52,30 @@ export async function showCompanyMenu(phone, business, user) {
         "Choisir",
         sections
     );
+}
+
+/**
+ * Point d'entrée "modifier mon entreprise" détecté par l'IA depuis n'importe quelle
+ * rubrique (ex: "change le nom de mon entreprise en Yamo Shop"). Si une valeur a été
+ * comprise, on applique directement (comme le fait le flow manuel, sans confirmation
+ * supplémentaire) ; sinon on redirige vers l'étape de saisie correspondante.
+ */
+export async function startEditBusinessFromAi(phone, business, item) {
+
+    const fieldMap = {
+        name: { key: "name", label: "nom de l'entreprise", step: STEPS.COMPANY_EDIT_NAME, prompt: "Nouveau nom de l'entreprise ?" },
+        city: { key: "city", label: "ville", step: STEPS.COMPANY_EDIT_CITY, prompt: "Nouvelle ville ?" },
+        sector: { key: "sector", label: "secteur d'activité", step: STEPS.COMPANY_EDIT_SECTOR, prompt: "Nouveau secteur d'activité ?" }
+    };
+
+    const config = fieldMap[item.field] || fieldMap.name;
+
+    if (item.value && String(item.value).trim()) {
+        return applyCompanyUpdate(phone, business, { [config.key]: String(item.value).trim() }, config.label);
+    }
+
+    await updateConversation(phone, config.step, {});
+    return sendWhatsAppMessage(phone, config.prompt);
 }
 
 export async function handleBusiness(phone, text, conversation, business, user, message) {

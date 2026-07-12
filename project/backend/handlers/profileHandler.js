@@ -4,9 +4,6 @@ import { updateUser } from "../services/userService.js";
 import { STEPS } from "../utils/steps.js";
 import { showMainMenu } from "./menuHandler.js";
 
-/**
- * Affiche le profil de l'utilisateur (nom + téléphone) avec option de modification.
- */
 export async function showProfileMenu(phone, business, user) {
 
     await updateConversation(phone, STEPS.PROFILE_MENU, {});
@@ -21,6 +18,22 @@ export async function showProfileMenu(phone, business, user) {
             { id: "menu", title: "⬅️ Retour" }
         ]
     );
+}
+
+/**
+ * Point d'entrée "modifier mon nom" détecté par l'IA depuis n'importe quelle rubrique
+ * (ex: "change mon nom en Lyne"). Si une valeur a été comprise, on applique directement
+ * (comme le fait déjà le flow manuel, sans étape de confirmation supplémentaire) ;
+ * sinon on redirige vers l'étape existante qui demande le nom.
+ */
+export async function startEditProfileNameFromAi(phone, business, user, value) {
+
+    if (value && String(value).trim()) {
+        return handleProfileEditName(phone, String(value).trim(), business, user);
+    }
+
+    await updateConversation(phone, STEPS.PROFILE_EDIT_NAME, {});
+    return sendWhatsAppMessage(phone, "Quel est votre nouveau nom ?");
 }
 
 export async function handleProfile(phone, text, conversation, business, user) {

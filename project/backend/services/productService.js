@@ -1,8 +1,5 @@
 import { supabase } from "../config/supabase.js";
 
-/**
- * Liste les produits d'une entreprise (triés par nom).
- */
 export async function getProductsByBusiness(businessId) {
 
     const { data, error } = await supabase
@@ -19,9 +16,6 @@ export async function getProductsByBusiness(businessId) {
     return data;
 }
 
-/**
- * Récupère un produit par id (et vérifie qu'il appartient bien à l'entreprise).
- */
 export async function getProductById(id, businessId) {
 
     const { data, error } = await supabase
@@ -39,9 +33,6 @@ export async function getProductById(id, businessId) {
     return data;
 }
 
-/**
- * Crée un produit.
- */
 export async function createProduct(businessId, { name, price, stock_quantity, unit }) {
 
     const { data, error } = await supabase
@@ -64,9 +55,6 @@ export async function createProduct(businessId, { name, price, stock_quantity, u
     return data;
 }
 
-/**
- * Met à jour un produit (nom, prix, unité...).
- */
 export async function updateProduct(id, values) {
 
     const { data, error } = await supabase
@@ -84,11 +72,6 @@ export async function updateProduct(id, values) {
     return data;
 }
 
-/**
- * Décrémente le stock d'un produit après une vente.
- * Utilise le stock actuel plutôt qu'une opération atomique SQL pour rester
- * simple ; à faible volume ceci est suffisant.
- */
 export async function decrementStock(id, quantity) {
 
     const { data: product, error: fetchError } = await supabase
@@ -107,9 +90,6 @@ export async function decrementStock(id, quantity) {
     return await updateProduct(id, { stock_quantity: newStock });
 }
 
-/**
- * Augmente le stock d'un produit (ex: réajustement après annulation d'une commande).
- */
 export async function incrementStock(id, quantity) {
 
     const { data: product, error: fetchError } = await supabase
@@ -128,10 +108,6 @@ export async function incrementStock(id, quantity) {
     return await updateProduct(id, { stock_quantity: newStock });
 }
 
-/**
- * Ajuste le stock d'un delta signé (positif = ajout, négatif = retrait).
- * Utilisé par la gestion manuelle du stock ("ajouter/retirer des unités").
- */
 export async function adjustStock(id, delta) {
 
     const { data: product, error: fetchError } = await supabase
@@ -150,9 +126,6 @@ export async function adjustStock(id, delta) {
     return await updateProduct(id, { stock_quantity: newStock });
 }
 
-/**
- * Historique des ventes d'un produit (le plus récent en premier).
- */
 export async function getSalesHistoryForProduct(productId, limit = 20) {
 
     const { data, error } = await supabase
@@ -170,9 +143,6 @@ export async function getSalesHistoryForProduct(productId, limit = 20) {
         .slice(0, limit);
 }
 
-/**
- * Supprime un produit.
- */
 export async function deleteProduct(id) {
 
     const { error } = await supabase
@@ -188,9 +158,6 @@ export async function deleteProduct(id) {
     return true;
 }
 
-/**
- * Supprime tous les produits d'une entreprise (utilisé lors de la suppression du compte).
- */
 export async function deleteProductsByBusiness(businessId) {
 
     const { error } = await supabase

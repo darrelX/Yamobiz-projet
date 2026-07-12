@@ -1,13 +1,11 @@
 import { sendWhatsAppMessage } from "../services/whatsapp.js";
 import { updateConversation, resetToMenu } from "../services/conversationService.js";
 import { getOpenDebts, getDebtById, recordPayment } from "../services/debtService.js";
+import { matchCustomerByName } from "../utils/productMatcher.js";
 import { STEPS } from "../utils/steps.js";
 import { formatFCFA, parsePositiveNumber, formatDateTime } from "../utils/format.js";
 import { showMainMenu } from "./menuHandler.js";
 
-/**
- * Affiche la liste des créances ouvertes (appelée depuis le menu principal).
- */
 export async function showDebtMenu(phone, business) {
 
     const debts = await getOpenDebts(business.id);
@@ -21,6 +19,78 @@ export async function showDebtMenu(phone, business) {
     await updateConversation(phone, STEPS.DEBT_MENU, { debtIds: debts.map(d => d.id) });
 
     return sendWhatsAppMessage(phone, buildDebtListMessage(debts));
+}
+
+/**
+ * Point d'entrée "paiement de créance" détecté par l'IA (ex: "Paul a payé 5000").
+ * On cherche la créance ouverte du client mentionné. Si un montant a été précisé et
+ * qu'il est valide, on applique le paiement directement (comme le fait déjà le flow
+ * manuel, qui n'a pas d'étape de confirmation supplémentaire) ; sinon on demande le
+ * montant en rejoignant l'étape existante.
+ */
+export async function startPayDebtFromAi(phone, business, item) {
+
+    const debts = await getOpenDebts(business.id);
+
+    if (!debts.length) {
+        await sendWhatsAppMessage(phone, "✅ Aucune créance en cours actuellement.");
+        return showMainMenu(phone, business);
+    }
+
+    const customersWithDebt = debts.map(d => ({ id: d.id, name: d.customers?.name || "" }));
+    const match = matchCustomerByName(customersWithDebt, item.customer_query);
+
+    if (!match) {
+        await sendWhatsAppMessage(
+            phone,
+            `❌ Je n'ai pas trouvé de créance ouverte pour "${item.customer_query}".`
+        );
+        return showDebtMenu(phone, business);
+    }
+
+    const debt = await getDebtById(match.id, business.id);
+    const remaining = Number(debt.amount_total) - Number(debt.amount_paid);
+    const amount = item.amount ? parsePositiveNumber(String(item.amount)) : null;
+
+    if (amount) {
+
+        if (amount > remaining) {
+            await sendWhatsAppMessage(
+                phone,
+                `❌ Ce montant dépasse le restant dû de ${debt.customers?.name || "ce client"} (${formatFCFA(remaining)}).`
+            );
+            return showDebtMenu(phone, business);
+        }
+
+        const updated = await recordPayment(debt.id, amount);
+
+        if (!updated) {
+            await sendWhatsAppMessage(phone, "❌ Une erreur est survenue lors de l'enregistrement du paiement.");
+            return showMainMenu(phone, business);
+        }
+
+        await resetToMenu(phone);
+
+        const statusLabel = updated.status === "paid" ? "✅ Créance totalement soldée !" : "🟡 Paiement partiel enregistré.";
+        const newRemaining = Number(updated.amount_total) - Number(updated.amount_paid);
+
+        await sendWhatsAppMessage(
+            phone,
+            `${statusLabel}\n\nClient : ${debt.customers?.name || "-"}\nMontant payé : ${formatFCFA(amount)}\nRestant dû : ${formatFCFA(newRemaining)}`
+        );
+
+        return showMainMenu(phone, business);
+    }
+
+    await updateConversation(phone, STEPS.DEBT_AMOUNT, {
+        selectedDebtId: debt.id,
+        remaining
+    });
+
+    return sendWhatsAppMessage(
+        phone,
+        `Créance de ${debt.customers?.name || "client"} — restant dû : ${formatFCFA(remaining)}\n\nQuel montant a été payé ?`
+    );
 }
 
 export async function handleDebt(phone, text, conversation, business) {

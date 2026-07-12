@@ -10,11 +10,6 @@ if (!fs.existsSync(REPORTS_DIR)) {
     fs.mkdirSync(REPORTS_DIR, { recursive: true });
 }
 
-/**
- * Génère un rapport PDF complet pour une analyse IA (question + analyse +
- * graphique + tableau de données + requête SQL utilisée, à titre de
- * transparence). Retourne le chemin local du fichier généré.
- */
 export async function generateAnalysisReportPdf(business, analysis, chartBuffer) {
 
     const fileName = `analyse-${business.id}-${Date.now()}.pdf`;

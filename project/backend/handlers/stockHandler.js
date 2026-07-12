@@ -9,13 +9,11 @@ import {
     adjustStock,
     getSalesHistoryForProduct
 } from "../services/productService.js";
+import { matchProductByName } from "../utils/productMatcher.js";
 import { STEPS } from "../utils/steps.js";
-import { parsePositiveNumber, formatFCFA, formatDateTime } from "../utils/format.js";
+import { parsePositiveNumber, parseYesNo, formatFCFA, formatDateTime } from "../utils/format.js";
 import { buildStockListMessage, showMainMenu } from "./menuHandler.js";
 
-/**
- * Affiche la liste du stock + les actions disponibles au premier niveau.
- */
 export async function showStockMenu(phone, business) {
 
     const products = await getProductsByBusiness(business.id);
@@ -30,7 +28,7 @@ export async function showStockMenu(phone, business) {
 
     return sendWhatsAppMessage(
         phone,
-        `📦 *Votre stock*\n\n${list}\n\n1️⃣ Ajouter un produit\nEntrez le *numéro* d'un produit pour le gérer (modifier, ajuster le stock, historique, supprimer)\n0️⃣ Retour au menu`
+        `📦 *Votre stock*\n\n${list}\n\n1️⃣ Ajouter un produit\nEntrez le *numéro* d'un produit pour le gérer (modifier, ajuster le stock, historique, supprimer)\n0️⃣ Retour au menu\n\n_Astuce : vous pouvez aussi m'écrire directement, ex. "ajoute 10 riz à 500 et 20 sucre à 300"._`
     );
 }
 
@@ -65,10 +63,169 @@ export async function handleStock(phone, text, conversation, business) {
         case STEPS.STOCK_DELETE_CONFIRM:
             return handleDeleteConfirm(phone, text, conversation, business);
 
+        case STEPS.STOCK_ADD_BULK_REVIEW:
+            return handleBulkAddConfirm(phone, text, conversation, business);
+
         default:
             await resetToMenu(phone);
             return showMainMenu(phone, business);
     }
+}
+
+/**
+ * Point d'entrée "ajout de stock en bloc" : appelé depuis menuHandler quand l'IA a détecté
+ * une intention ADD_STOCK dans un message libre/vocal, avec une liste de
+ * { product_query, quantity, price? }.
+ *
+ * Si le produit existe déjà (correspondance approximative par nom), on incrémente son stock.
+ * Sinon, on le crée — mais seulement si un prix a été fourni. Rien n'est écrit en base
+ * avant confirmation explicite de l'utilisateur.
+ */
+export async function startBulkAddFromAiItems(phone, business, aiItems, products = null) {
+
+    const productList = products || await getProductsByBusiness(business.id);
+
+    const toRestock = [];
+    const toCreate = [];
+    const unresolved = [];
+
+    for (const item of aiItems) {
+
+        const quantity = Number(item.quantity);
+
+        if (!item.product_query || !quantity || quantity <= 0) {
+            unresolved.push(item.product_query || "?");
+            continue;
+        }
+
+        const existing = matchProductByName(productList, item.product_query);
+
+        if (existing) {
+            toRestock.push({ id: existing.id, name: existing.name, quantity, unit: existing.unit });
+        } else if (item.price) {
+            toCreate.push({ name: item.product_query.trim(), price: Number(item.price), quantity });
+        } else {
+            unresolved.push(`${item.product_query} (prix manquant pour un nouveau produit)`);
+        }
+    }
+
+    if (!toCreate.length && !toRestock.length) {
+        await resetToMenu(phone);
+        await sendWhatsAppMessage(
+            phone,
+            `🤖 Je n'ai pas pu traiter votre demande d'ajout de stock.${unresolved.length ? `\n\n❓ ${unresolved.join(", ")}` : ""}`
+        );
+        return showMainMenu(phone, business);
+    }
+
+    await updateConversation(phone, STEPS.STOCK_ADD_BULK_REVIEW, { toCreate, toRestock });
+
+    return sendWhatsAppMessage(phone, buildBulkAddReviewMessage(toCreate, toRestock, unresolved));
+}
+
+function buildBulkAddReviewMessage(toCreate, toRestock, unresolved) {
+
+    const lines = [];
+
+    for (const p of toRestock) {
+        lines.push(`• ${p.name} : +${p.quantity} ${p.unit} (réapprovisionnement)`);
+    }
+
+    for (const p of toCreate) {
+        lines.push(`• ${p.name} (nouveau) : ${p.quantity} unité(s) à ${formatFCFA(p.price)}`);
+    }
+
+    let message = `🤖 *Ajout de stock — récapitulatif*\n\n${lines.join("\n")}`;
+
+    if (unresolved.length) {
+        message += `\n\n❓ Non traité(s) : ${unresolved.join(", ")}`;
+    }
+
+    message += "\n\nConfirmez-vous cet ajout ? (oui / non)";
+
+    return message;
+}
+
+/**
+ * Point d'entrée "modifier un produit" détecté par l'IA depuis n'importe quelle
+ * rubrique (ex: "modifie le prix du riz à 600", "renomme sucre en sucre blanc").
+ * Si une valeur a été comprise, on applique directement (comme le fait déjà le flow
+ * manuel, sans confirmation supplémentaire) ; sinon on redirige vers l'étape de
+ * saisie correspondante.
+ */
+export async function startEditProductFromAi(phone, business, item, products = null) {
+
+    const productList = products || await getProductsByBusiness(business.id);
+    const product = matchProductByName(productList, item.product_query);
+
+    if (!product) {
+        await sendWhatsAppMessage(phone, `❌ Je n'ai pas trouvé de produit correspondant à "${item.product_query}".`);
+        return showStockMenu(phone, business);
+    }
+
+    if (item.field === "price") {
+
+        const price = item.value ? parsePositiveNumber(String(item.value)) : null;
+
+        if (price) {
+            const updated = await updateProduct(product.id, { price });
+            await sendWhatsAppMessage(phone, `✅ Prix mis à jour : *${updated.name}* — ${formatFCFA(updated.price)}`);
+            return showProductActions(phone, updated);
+        }
+
+        await updateConversation(phone, STEPS.STOCK_EDIT_PRICE, { selectedProductId: product.id });
+        return sendWhatsAppMessage(phone, `Nouveau prix pour "${product.name}" (en FCFA) ?`);
+    }
+
+    // field === "name" (ou non précisé)
+    const name = item.value ? String(item.value).trim() : null;
+
+    if (name) {
+        const updated = await updateProduct(product.id, { name });
+        await sendWhatsAppMessage(phone, `✅ Nom mis à jour : *${updated.name}*`);
+        return showProductActions(phone, updated);
+    }
+
+    await updateConversation(phone, STEPS.STOCK_EDIT_NAME, { selectedProductId: product.id });
+    return sendWhatsAppMessage(phone, `Nouveau nom pour "${product.name}" ?`);
+}
+
+async function handleBulkAddConfirm(phone, text, conversation, business) {
+
+    const answer = parseYesNo(text);
+
+    if (answer === null) {
+        return sendWhatsAppMessage(phone, "Répondez par *oui* ou *non*.");
+    }
+
+    if (!answer) {
+        await resetToMenu(phone);
+        await sendWhatsAppMessage(phone, "Ajout de stock annulé.");
+        return showMainMenu(phone, business);
+    }
+
+    const { toCreate, toRestock } = conversation.data;
+    let count = 0;
+
+    for (const p of toRestock) {
+        const updated = await adjustStock(p.id, p.quantity);
+        if (updated) count++;
+    }
+
+    for (const p of toCreate) {
+        const created = await createProduct(business.id, {
+            name: p.name,
+            price: p.price,
+            stock_quantity: p.quantity
+        });
+        if (created) count++;
+    }
+
+    await resetToMenu(phone);
+
+    await sendWhatsAppMessage(phone, `✅ Stock mis à jour pour ${count} produit(s).`);
+
+    return showMainMenu(phone, business);
 }
 
 async function handleStockMenuChoice(phone, text, conversation, business) {
@@ -104,7 +261,7 @@ async function handleStockMenuChoice(phone, text, conversation, business) {
     return showProductActions(phone, product);
 }
 
-async function showProductActions(phone, product) {
+export async function showProductActions(phone, product) {
 
     await updateConversation(phone, STEPS.STOCK_PRODUCT_ACTIONS, {
         selectedProductId: product.id

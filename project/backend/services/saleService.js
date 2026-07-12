@@ -1,11 +1,6 @@
 import { supabase } from "../config/supabase.js";
 import { generateInvoiceNumber } from "../utils/format.js";
 
-/**
- * Crée une vente complète (sale + sale_items) à partir d'un panier.
- *
- * cartItems attendu : [{ product_id, product_name, quantity, unit_price, subtotal }]
- */
 export async function createSale(businessId, {
     customerId,
     cartItems,
@@ -54,9 +49,6 @@ export async function createSale(businessId, {
     return sale;
 }
 
-/**
- * Récupère une vente avec ses lignes.
- */
 export async function getSaleWithItems(saleId) {
 
     const { data: sale, error: saleError } = await supabase
@@ -84,8 +76,27 @@ export async function getSaleWithItems(saleId) {
 }
 
 /**
- * Liste les ventes d'une entreprise sur une période donnée (bornes ISO incluses).
+ * Recherche une vente par son numéro de facture, dans le périmètre d'une entreprise.
+ * Utilisé pour la suppression en bloc de ventes via message libre/vocal
+ * (l'utilisateur doit mentionner explicitement le(s) numéro(s) de facture).
  */
+export async function getSaleByInvoiceNumber(businessId, invoiceNumber) {
+
+    const { data, error } = await supabase
+        .from("sales")
+        .select("*")
+        .eq("business_id", businessId)
+        .eq("invoice_number", invoiceNumber)
+        .maybeSingle();
+
+    if (error) {
+        console.log("❌ Erreur recherche vente par facture :", error);
+        return null;
+    }
+
+    return data;
+}
+
 export async function getSalesBetween(businessId, fromIso, toIso) {
 
     const { data, error } = await supabase
@@ -104,9 +115,6 @@ export async function getSalesBetween(businessId, fromIso, toIso) {
     return data;
 }
 
-/**
- * Liste les commandes (ventes) les plus récentes d'une entreprise, avec le nom du client.
- */
 export async function getRecentSales(businessId, limit = 10) {
 
     const { data, error } = await supabase
@@ -124,9 +132,6 @@ export async function getRecentSales(businessId, limit = 10) {
     return data;
 }
 
-/**
- * Supprime une vente et ses lignes (utilisé lors de l'annulation d'une commande).
- */
 export async function deleteSale(saleId) {
 
     const { error: itemsError } = await supabase
@@ -152,9 +157,6 @@ export async function deleteSale(saleId) {
     return true;
 }
 
-/**
- * Supprime toutes les ventes (et leurs lignes) d'une entreprise (suppression du compte).
- */
 export async function deleteSalesByBusiness(businessId) {
 
     const { data: sales, error: fetchError } = await supabase
@@ -194,9 +196,6 @@ export async function deleteSalesByBusiness(businessId) {
     return true;
 }
 
-/**
- * Récupère les lignes de vente les plus vendues sur un ensemble de ventes.
- */
 export async function getTopProducts(saleIds, limit = 3) {
 
     if (!saleIds.length) return [];

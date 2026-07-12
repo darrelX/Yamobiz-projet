@@ -1,8 +1,5 @@
 import { supabase } from "../config/supabase.js";
 
-/**
- * Cherche un client existant par nom (insensible à la casse) pour une entreprise.
- */
 export async function findCustomerByName(businessId, name) {
 
     const { data, error } = await supabase
@@ -21,8 +18,24 @@ export async function findCustomerByName(businessId, name) {
 }
 
 /**
- * Crée un client.
+ * Liste tous les clients d'une entreprise. Utilisé pour la correspondance
+ * approximative nom -> client lors d'une suppression en bloc par IA/vocal.
  */
+export async function getCustomersByBusiness(businessId) {
+
+    const { data, error } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("business_id", businessId);
+
+    if (error) {
+        console.log("❌ Erreur récupération clients :", error);
+        return [];
+    }
+
+    return data || [];
+}
+
 export async function createCustomer(businessId, { name, phone }) {
 
     const { data, error } = await supabase
@@ -39,9 +52,6 @@ export async function createCustomer(businessId, { name, phone }) {
     return data;
 }
 
-/**
- * Récupère un client existant, ou le crée s'il n'existe pas encore.
- */
 export async function getOrCreateCustomer(businessId, name, phone = null) {
 
     if (!name) return null;
@@ -56,8 +66,23 @@ export async function getOrCreateCustomer(businessId, name, phone = null) {
 }
 
 /**
- * Supprime tous les clients d'une entreprise (utilisé lors de la suppression du compte).
+ * Supprime un client précis par id (utilisé par la suppression en bloc).
  */
+export async function deleteCustomerById(id) {
+
+    const { error } = await supabase
+        .from("customers")
+        .delete()
+        .eq("id", id);
+
+    if (error) {
+        console.log("❌ Erreur suppression client :", error);
+        return false;
+    }
+
+    return true;
+}
+
 export async function deleteCustomersByBusiness(businessId) {
 
     const { error } = await supabase

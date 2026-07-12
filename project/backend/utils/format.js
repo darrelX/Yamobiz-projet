@@ -58,8 +58,6 @@ export function generateInvoiceNumber() {
 
 /**
  * Formate une date avec précision à la seconde (fr-FR).
- * Utilisé partout où l'heure exacte d'une opération doit être consultable
- * (commandes, historique de stock, factures, rapports d'analyse...).
  */
 export function formatDateTime(date) {
     const d = new Date(date);

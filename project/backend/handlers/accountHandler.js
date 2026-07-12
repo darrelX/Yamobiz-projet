@@ -11,8 +11,31 @@ import { STEPS } from "../utils/steps.js";
 import { showMainMenu } from "./menuHandler.js";
 
 /**
- * Affiche le menu du compte utilisateur, avec l'option de suppression totale.
+ * Point d'entrée "supprimer mon compte" détecté par l'IA depuis n'importe quelle
+ * rubrique. Contrairement aux autres actions IA, celle-ci ne s'applique JAMAIS
+ * directement, même si la formulation semble catégorique : on redirige toujours
+ * vers l'écran de confirmation existant, qui reste seul maître d'une action aussi
+ * définitive (compte + toutes les entreprises + tout l'historique).
  */
+export async function startAccountDeleteFromAi(phone, business, user) {
+
+    await updateConversation(phone, STEPS.ACCOUNT_DELETE_CONFIRM, {});
+
+    const businesses = await getBusinessesByUserId(user.id);
+    const bizWarning = businesses.length > 1
+        ? `vos ${businesses.length} entreprises`
+        : "votre entreprise";
+
+    return sendWhatsAppButtons(
+        phone,
+        `❗ Vous avez demandé la suppression de votre compte.\n\n⚠️ Cela effacera définitivement ${bizWarning}, tout le stock, toutes les commandes et toutes les créances. Cette action est irréversible.\n\nConfirmez-vous ?`,
+        [
+            { id: "confirm_delete", title: "✅ Oui, supprimer" },
+            { id: "menu", title: "❌ Annuler" }
+        ]
+    );
+}
+
 export async function showAccountMenu(phone, business, user) {
 
     await updateConversation(phone, STEPS.ACCOUNT_MENU, {});
@@ -80,7 +103,6 @@ async function handleAccountDeleteConfirm(phone, text, business, user) {
         return showMainMenu(phone, business);
     }
 
-    // Nettoyage complet de TOUTES les entreprises de l'utilisateur (multi-entreprises).
     const businesses = await getBusinessesByUserId(user.id);
 
     for (const biz of businesses) {
