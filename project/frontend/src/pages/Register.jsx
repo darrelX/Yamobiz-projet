@@ -177,6 +177,9 @@ export default function Register() {
                     placeholder="Ex: +237 6XX XXX XXX"
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                   />
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    Ce numéro activera le bot WhatsApp pour votre commerce et vous permettra aussi de vous connecter sans mot de passe.
+                  </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
