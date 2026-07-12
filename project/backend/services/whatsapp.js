@@ -7,32 +7,45 @@ import {
     WHATSAPP_BASE_URL,
     WHATSAPP_API_VERSION
 } from "../config/whatsapp.js";
+import { MAIN_MENU_ITEMS } from "../utils/mainMenuItems.js";
 
 const authHeaders = {
     Authorization: `Bearer ${WHATSAPP_TOKEN}`,
     "Content-Type": "application/json"
 };
 
-const MENU_BUTTON_ID = "menu";
-const MENU_BUTTON_TITLE = "🏠 Menu principal";
+// Préfixe utilisé pour les ids du menu "raccourci" omniprésent, afin de ne jamais
+// être confondu avec un simple chiffre "1".."8" attendu par un autre écran
+// (ex: une quantité, un numéro de créance...). messageHandler.js reconnaît ce
+// préfixe et route directement vers l'option correspondante du menu principal.
+export const QUICK_MENU_PREFIX = "qm_";
 
 /**
- * Envoie un petit message-bouton "🏠 Menu principal", automatiquement accroché
- * après (quasi) chaque réponse du bot, pour que l'utilisateur puisse revenir au
- * menu principal en un tap depuis N'IMPORTE QUEL écran de l'application.
+ * Envoie le bouton "Choisir" omniprésent, accroché après (quasi) chaque réponse du
+ * bot : il ouvre directement la même liste d'options que le menu principal, en un
+ * seul tap, depuis N'IMPORTE QUEL écran de l'application.
  */
 async function sendMenuShortcut(phone) {
     try {
+
+        const sections = [{
+            title: "Menu principal",
+            rows: MAIN_MENU_ITEMS.map(item => ({
+                id: `${QUICK_MENU_PREFIX}${item.id}`,
+                title: item.title
+            }))
+        }];
 
         const payload = {
             messaging_product: "whatsapp",
             to: phone,
             type: "interactive",
             interactive: {
-                type: "button",
-                body: { text: "🏠" },
+                type: "list",
+                body: { text: "🏠 Accès rapide" },
                 action: {
-                    buttons: [{ type: "reply", reply: { id: MENU_BUTTON_ID, title: MENU_BUTTON_TITLE } }]
+                    button: "Choisir",
+                    sections
                 }
             }
         };
@@ -99,11 +112,7 @@ export async function sendWhatsAppButtons(phone, bodyText, buttons, footer = nul
 
         const response = await axios.post(`${WHATSAPP_BASE_URL}/messages`, payload, { headers: authHeaders });
 
-        // Si "🏠 Menu principal" ne fait pas déjà partie des boutons affichés, on l'ajoute
-        // en message de suivi, pour qu'il soit accessible même depuis un écran à boutons.
-        const alreadyHasMenu = buttons.some(b => b.id === MENU_BUTTON_ID);
-
-        if (!skipMenuFooter && !alreadyHasMenu) {
+        if (!skipMenuFooter) {
             await sendMenuShortcut(phone);
         }
 

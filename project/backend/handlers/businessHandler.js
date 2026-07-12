@@ -14,12 +14,16 @@ import {
 import { updateUser } from "../services/userService.js";
 import { saveBusinessLogo } from "../services/mediaService.js";
 import { deleteProductsByBusiness } from "../services/productService.js";
-import { deleteSalesByBusiness } from "../services/saleService.js";
+import { deleteSalesByBusiness, getTotalRevenue } from "../services/saleService.js";
 import { deleteDebtsByBusiness } from "../services/debtService.js";
 import { deleteCustomersByBusiness } from "../services/customerService.js";
 import { deleteInvoicesByBusiness } from "../services/invoiceService.js";
+import { getRecentActivityLogs } from "../services/loggerService.js";
 import { STEPS } from "../utils/steps.js";
+import { formatFCFA, formatDateTime } from "../utils/format.js";
 import { showMainMenu } from "./menuHandler.js";
+
+const SKIP_WORDS = ["passer", "plus tard", "skip", "non", "aucun"];
 
 export async function showCompanyMenu(phone, business, user) {
 
@@ -40,6 +44,8 @@ export async function showCompanyMenu(phone, business, user) {
         rows.push({ id: "7", title: "🗑️ Supprimer cette entreprise" });
     }
 
+    rows.push({ id: "revenue", title: "💰 Chiffre d'affaires" });
+    rows.push({ id: "activity_log", title: "📜 Journal d'activité" });
     rows.push({ id: "0", title: "⬅️ Retour au menu" });
 
     const sections = [{ title: "Entreprise", rows }];
@@ -78,6 +84,19 @@ export async function startEditBusinessFromAi(phone, business, item) {
     return sendWhatsAppMessage(phone, config.prompt);
 }
 
+/**
+ * Point d'entrée "chiffre d'affaires" / "journal d'activité" détecté par l'IA depuis
+ * n'importe quelle rubrique. Affiche directement le résultat puis revient à la
+ * rubrique Entreprise (comme le fait le flow manuel).
+ */
+export async function showRevenueFromAi(phone, business, user) {
+    await showRevenue(phone, business, user);
+}
+
+export async function showActivityLogFromAi(phone, business, user) {
+    await showActivityLog(phone, business, user);
+}
+
 export async function handleBusiness(phone, text, conversation, business, user, message) {
 
     switch (conversation.step) {
@@ -103,8 +122,8 @@ export async function handleBusiness(phone, text, conversation, business, user, 
         case STEPS.COMPANY_ADD_CITY:
             return handleAddBusinessCity(phone, text, conversation, business);
 
-        case STEPS.COMPANY_ADD_SECTOR:
-            return handleAddBusinessSector(phone, text, conversation, business, user);
+        case STEPS.COMPANY_ADD_LOGO:
+            return handleAddBusinessLogo(phone, text, conversation, business, user, message);
 
         case STEPS.COMPANY_SWITCH:
             return handleCompanySwitch(phone, text, conversation, business, user);
@@ -191,8 +210,65 @@ async function handleCompanyMenuChoice(phone, text, business, user) {
         );
     }
 
+    if (choice === "revenue") {
+        return showRevenue(phone, business, user);
+    }
+
+    if (choice === "activity_log") {
+        return showActivityLog(phone, business, user);
+    }
+
     await resetToMenu(phone);
     return showMainMenu(phone, business);
+}
+
+/**
+ * Sous-rubrique "Chiffre d'affaires" : cumul de toutes les ventes de l'entreprise,
+ * depuis toujours (pas seulement le mois en cours, contrairement au résumé rapide
+ * de la rubrique Analyse).
+ */
+async function showRevenue(phone, business, user) {
+
+    const total = await getTotalRevenue(business.id);
+
+    await sendWhatsAppMessage(
+        phone,
+        `💰 *Chiffre d'affaires — ${business.name}*\n\nCumul de toutes vos ventes depuis toujours : ${formatFCFA(total)}`
+    );
+
+    return showCompanyMenu(phone, business, user);
+}
+
+const LOG_TYPE_LABELS = {
+    vente: "🛒 Vente",
+    stock_ajout: "📦 Ajout stock",
+    stock_retrait: "📉 Retrait stock"
+};
+
+/**
+ * Sous-rubrique "Journal d'activité" : historique horodaté des ventes et des
+ * mouvements de stock (ajouts/retraits), les plus récents en premier.
+ */
+async function showActivityLog(phone, business, user) {
+
+    const logs = await getRecentActivityLogs(business.id, 20);
+
+    if (!logs.length) {
+        await sendWhatsAppMessage(phone, "📜 Aucune activité enregistrée pour le moment.");
+        return showCompanyMenu(phone, business, user);
+    }
+
+    const lines = logs.map(l => {
+        const label = LOG_TYPE_LABELS[l.type] || l.type;
+        return `• ${formatDateTime(l.created_at)} — ${label} : ${l.message}`;
+    });
+
+    await sendWhatsAppMessage(
+        phone,
+        `📜 *Journal d'activité — ${business.name}*\n\n${lines.join("\n")}`
+    );
+
+    return showCompanyMenu(phone, business, user);
 }
 
 async function applyCompanyUpdate(phone, business, values, label) {
@@ -265,24 +341,53 @@ async function handleAddBusinessCity(phone, text, conversation) {
         return sendWhatsAppMessage(phone, "❌ Merci d'indiquer une ville.");
     }
 
-    await updateConversation(phone, STEPS.COMPANY_ADD_SECTOR, {
+    await updateConversation(phone, STEPS.COMPANY_ADD_LOGO, {
         ...conversation.data,
         city: text.trim()
     });
 
-    return sendWhatsAppMessage(phone, "Quel est son secteur d'activité ?");
+    return sendWhatsAppMessage(
+        phone,
+        '📷 Envoyez la photo du logo de cette entreprise, ou écrivez "passer" pour continuer sans logo pour le moment.'
+    );
 }
 
-async function handleAddBusinessSector(phone, text, conversation, business, user) {
+/**
+ * Dernière étape de l'ajout d'une (nouvelle) entreprise : capture facultative du
+ * logo, puis création. Même logique que l'inscription initiale — le secteur
+ * d'activité n'est plus demandé à la création (il reste modifiable ensuite depuis
+ * le menu Entreprise si besoin).
+ */
+async function handleAddBusinessLogo(phone, text, conversation, business, user, message) {
 
-    if (!text || !text.trim()) {
-        return sendWhatsAppMessage(phone, "❌ Merci d'indiquer un secteur d'activité.");
+    const wantsSkip = SKIP_WORDS.includes((text || "").trim().toLowerCase());
+
+    let logoBuffer = null;
+    let logoExt = null;
+
+    if (!wantsSkip) {
+
+        if (message?.type === "image" && message.raw?.image?.id) {
+
+            const media = await downloadWhatsAppMedia(message.raw.image.id);
+
+            if (media) {
+                logoBuffer = media.buffer;
+                logoExt = media.mimeType.includes("png") ? "png" : "jpg";
+            }
+
+        } else {
+            return sendWhatsAppMessage(
+                phone,
+                '📷 Envoyez directement la photo du logo, ou écrivez "passer" pour continuer sans logo pour le moment.'
+            );
+        }
     }
 
     const newBusiness = await createBusiness(user.id, {
         businessName: conversation.data.businessName,
         city: conversation.data.city,
-        sector: text.trim(),
+        sector: null,
         phone
     });
 
@@ -292,15 +397,23 @@ async function handleAddBusinessSector(phone, text, conversation, business, user
         return showMainMenu(phone, business);
     }
 
+    let finalBusiness = newBusiness;
+
+    if (logoBuffer) {
+        const logoPath = await saveBusinessLogo(newBusiness.id, logoBuffer, logoExt);
+        const updated = await updateBusiness(newBusiness.id, { logo_path: logoPath });
+        finalBusiness = updated || newBusiness;
+    }
+
     await updateUser(user.id, { active_business_id: newBusiness.id });
     await resetToMenu(phone);
 
     await sendWhatsAppMessage(
         phone,
-        `🎉 Entreprise "${newBusiness.name}" créée et activée !\n\n_Changez d'entreprise active à tout moment depuis "🏢 Mon entreprise"._`
+        `🎉 Entreprise "${finalBusiness.name}" créée et activée !\n\n_Changez d'entreprise active à tout moment depuis "🏢 Mon entreprise"._`
     );
 
-    return showMainMenu(phone, newBusiness);
+    return showMainMenu(phone, finalBusiness);
 }
 
 async function handleCompanySwitch(phone, text, conversation, business, user) {

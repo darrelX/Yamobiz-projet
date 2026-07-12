@@ -97,6 +97,25 @@ export async function getSaleByInvoiceNumber(businessId, invoiceNumber) {
     return data;
 }
 
+/**
+ * Calcule le chiffre d'affaires cumulé de l'entreprise, depuis toujours
+ * (toutes les ventes, sans limite de période).
+ */
+export async function getTotalRevenue(businessId) {
+
+    const { data, error } = await supabase
+        .from("sales")
+        .select("total_amount")
+        .eq("business_id", businessId);
+
+    if (error) {
+        console.log("❌ Erreur calcul chiffre d'affaires :", error);
+        return 0;
+    }
+
+    return (data || []).reduce((sum, s) => sum + Number(s.total_amount), 0);
+}
+
 export async function getSalesBetween(businessId, fromIso, toIso) {
 
     const { data, error } = await supabase

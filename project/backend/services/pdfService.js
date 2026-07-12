@@ -84,7 +84,7 @@ export async function generateInvoicePdf(business, sale, items, customer) {
 
         doc.moveDown(4);
         doc.font("Helvetica").fontSize(9).fillColor("#888")
-            .text("Merci pour votre confiance.", 50, doc.y, {
+            .text("Merci d'avoir utilisé Yamobiz.", 50, doc.y, {
                 align: "center",
                 width: 495
             });

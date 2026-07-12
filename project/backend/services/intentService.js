@@ -25,6 +25,8 @@ import { askGemini } from "./geminiService.js";
  * - LIST_ORDERS        : afficher les dernières commandes/factures
  * - DELETE_SALES       : supprimer/annuler une ou plusieurs ventes (par numéro de facture)
  * - ANALYSIS_QUESTION  : poser une question ou demander une analyse sur l'activité
+ * - SHOW_REVENUE       : afficher le chiffre d'affaires cumulé
+ * - LIST_ACTIVITY_LOG  : afficher le journal d'activité (ventes, mouvements de stock)
  * - EDIT_PROFILE_NAME  : modifier le nom de l'utilisateur
  * - EDIT_BUSINESS      : modifier le nom, la ville ou le secteur de l'entreprise
  * - DELETE_ACCOUNT     : supprimer le compte (ne déclenche JAMAIS la suppression
@@ -64,6 +66,8 @@ Détermine l'intention du message parmi :
 - LIST_ORDERS : voir les dernières commandes ou factures (ex: "montre mes commandes", "donne-moi mes dernières factures")
 - DELETE_SALES : supprimer/annuler une ou plusieurs ventes en indiquant leur(s) numéro(s) de facture explicitement mentionné(s) dans le message (ex: "annule la commande INV-20260710-1234")
 - ANALYSIS_QUESTION : poser une question sur l'activité ou demander une analyse (ex: "fais-moi une analyse de mes ventes ce mois", "quel est mon produit le plus vendu ?", "comment se porte mon business ?")
+- SHOW_REVENUE : voir le chiffre d'affaires cumulé (ex: "quel est mon chiffre d'affaires ?", "combien j'ai gagné au total ?")
+- LIST_ACTIVITY_LOG : voir le journal/historique d'activité (ex: "montre le journal d'activité", "montre l'historique des actions")
 - EDIT_PROFILE_NAME : modifier le nom de l'utilisateur (ex: "change mon nom en Lyne", "je m'appelle désormais Paul")
 - EDIT_BUSINESS : modifier le nom, la ville ou le secteur d'activité de l'entreprise (ex: "change le nom de mon entreprise en Yamo Shop", "ma ville c'est maintenant Yaoundé")
 - DELETE_ACCOUNT : demande de suppression du compte (ex: "supprime mon compte", "je veux fermer mon compte")
@@ -82,6 +86,8 @@ LIST_DEBTS : {"intent":"LIST_DEBTS","items":[]}
 LIST_ORDERS : {"intent":"LIST_ORDERS","items":[]}
 DELETE_SALES : {"intent":"DELETE_SALES","items":[{"invoice_number":"..."}]}
 ANALYSIS_QUESTION : {"intent":"ANALYSIS_QUESTION","items":[{"question":"la question reformulée, ou vide si demande générique"}]}
+SHOW_REVENUE : {"intent":"SHOW_REVENUE","items":[]}
+LIST_ACTIVITY_LOG : {"intent":"LIST_ACTIVITY_LOG","items":[]}
 EDIT_PROFILE_NAME : {"intent":"EDIT_PROFILE_NAME","items":[{"value":"nouveau_nom"}]}
 EDIT_BUSINESS : {"intent":"EDIT_BUSINESS","items":[{"field":"name|city|sector","value":"nouvelle_valeur"}]}
 DELETE_ACCOUNT : {"intent":"DELETE_ACCOUNT","items":[{}]}
@@ -119,8 +125,8 @@ function parseIntentResponse(raw) {
     const validIntents = [
         "NEW_SALE", "ADD_STOCK", "EDIT_PRODUCT", "DELETE_PRODUCTS", "LIST_INVENTORY",
         "DELETE_CUSTOMERS", "PAY_DEBT", "LIST_DEBTS", "LIST_ORDERS", "DELETE_SALES",
-        "ANALYSIS_QUESTION", "EDIT_PROFILE_NAME", "EDIT_BUSINESS", "DELETE_ACCOUNT",
-        "UNKNOWN"
+        "ANALYSIS_QUESTION", "SHOW_REVENUE", "LIST_ACTIVITY_LOG", "EDIT_PROFILE_NAME",
+        "EDIT_BUSINESS", "DELETE_ACCOUNT", "UNKNOWN"
     ];
 
     if (!validIntents.includes(parsed.intent)) {

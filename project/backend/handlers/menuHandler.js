@@ -4,6 +4,7 @@ import { getProductsByBusiness } from "../services/productService.js";
 import { getCustomersByBusiness } from "../services/customerService.js";
 import { detectIntent } from "../services/intentService.js";
 import { STEPS } from "../utils/steps.js";
+import { MAIN_MENU_ITEMS } from "../utils/mainMenuItems.js";
 
 /**
  * Affiche le menu principal sous forme de liste WhatsApp interactive.
@@ -12,16 +13,7 @@ export async function showMainMenu(phone, business) {
 
     const sections = [{
         title: "Menu principal",
-        rows: [
-            { id: "1", title: "🛒 Nouvelle vente" },
-            { id: "2", title: "📦 Gérer le stock" },
-            { id: "3", title: "💰 Créances" },
-            { id: "4", title: "📊 Analyse" },
-            { id: "5", title: "📋 Commandes" },
-            { id: "6", title: "👤 Mon profil" },
-            { id: "7", title: "🏢 Mon entreprise" },
-            { id: "8", title: "⚙️ Mon compte" }
-        ]
+        rows: MAIN_MENU_ITEMS
     }];
 
     return sendWhatsAppList(
@@ -197,6 +189,18 @@ export async function dispatchIntent(phone, business, user, intentResult, contex
             const { startAnalysisFromAi } = await import("./aiAnalysisHandler.js");
             const question = intentResult.items[0]?.question || "";
             await startAnalysisFromAi(phone, business, question);
+            return true;
+        }
+
+        case "SHOW_REVENUE": {
+            const { showRevenueFromAi } = await import("./businessHandler.js");
+            await showRevenueFromAi(phone, business, user);
+            return true;
+        }
+
+        case "LIST_ACTIVITY_LOG": {
+            const { showActivityLogFromAi } = await import("./businessHandler.js");
+            await showActivityLogFromAi(phone, business, user);
             return true;
         }
 

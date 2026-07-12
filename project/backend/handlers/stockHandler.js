@@ -9,6 +9,7 @@ import {
     adjustStock,
     getSalesHistoryForProduct
 } from "../services/productService.js";
+import { logEvent } from "../services/loggerService.js";
 import { matchProductByName } from "../utils/productMatcher.js";
 import { STEPS } from "../utils/steps.js";
 import { parsePositiveNumber, parseYesNo, formatFCFA, formatDateTime } from "../utils/format.js";
@@ -209,7 +210,10 @@ async function handleBulkAddConfirm(phone, text, conversation, business) {
 
     for (const p of toRestock) {
         const updated = await adjustStock(p.id, p.quantity);
-        if (updated) count++;
+        if (updated) {
+            count++;
+            await logEvent(business.id, "stock_ajout", `${p.name} : +${p.quantity} ${p.unit} (via IA)`);
+        }
     }
 
     for (const p of toCreate) {
@@ -218,7 +222,10 @@ async function handleBulkAddConfirm(phone, text, conversation, business) {
             price: p.price,
             stock_quantity: p.quantity
         });
-        if (created) count++;
+        if (created) {
+            count++;
+            await logEvent(business.id, "stock_ajout", `Nouveau produit (via IA) : ${p.name} — ${p.quantity} unité(s)`);
+        }
     }
 
     await resetToMenu(phone);
@@ -428,6 +435,15 @@ async function handleAdjustQty(phone, text, conversation, business) {
     }
 
     const verb = adjustSign > 0 ? "ajoutée(s)" : "retirée(s)";
+    const logType = adjustSign > 0 ? "stock_ajout" : "stock_retrait";
+    const sign = adjustSign > 0 ? "+" : "-";
+
+    await logEvent(
+        business.id,
+        logType,
+        `${updated.name} : ${sign}${qty} ${updated.unit} (nouveau stock : ${updated.stock_quantity})`
+    );
+
     await sendWhatsAppMessage(
         phone,
         `✅ ${qty} unité(s) ${verb}. Nouveau stock : ${updated.stock_quantity} ${updated.unit}`
@@ -508,6 +524,8 @@ async function handleAddStock(phone, text, conversation, business) {
         await resetToMenu(phone);
         return sendWhatsAppMessage(phone, "❌ Une erreur est survenue lors de la création du produit.");
     }
+
+    await logEvent(business.id, "stock_ajout", `Nouveau produit : ${product.name} — ${product.stock_quantity} ${product.unit}`);
 
     await resetToMenu(phone);
 

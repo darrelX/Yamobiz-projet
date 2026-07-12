@@ -3,7 +3,7 @@ import { getBusinessesByUserId } from "../services/businessService.js";
 import { getProductsByBusiness } from "../services/productService.js";
 import { getCustomersByBusiness } from "../services/customerService.js";
 import { getOrCreateConversation, resetToMenu } from "../services/conversationService.js";
-import { sendWhatsAppMessage, downloadWhatsAppMedia } from "../services/whatsapp.js";
+import { sendWhatsAppMessage, downloadWhatsAppMedia, QUICK_MENU_PREFIX } from "../services/whatsapp.js";
 import { transcribeAudio } from "../services/geminiService.js";
 import { detectIntent } from "../services/intentService.js";
 import { normalizePhone } from "../utils/format.js";
@@ -139,7 +139,7 @@ export async function handleMessage(message) {
 
     // 4 - aucune entreprise => flux d'inscription, quelle que soit l'étape
     if (!businesses.length) {
-        return handleRegistration(phone, text, conversation, user);
+        return handleRegistration(phone, text, conversation, user, message);
     }
 
     // 5 - déterminer l'entreprise active (persistée sur users.active_business_id)
@@ -159,6 +159,17 @@ export async function handleMessage(message) {
     if (MENU_KEYWORDS.has(normalizedText)) {
         await resetToMenu(phone);
         return showMainMenu(phone, business);
+    }
+
+    // 6bis - le bouton "Choisir" omniprésent envoie un id "qm_X" (X = 1 à 8) : on
+    // route directement vers l'option correspondante du menu principal, quelle que
+    // soit l'étape en cours — c'est un accès direct, pas une simple demande de
+    // retour au menu.
+    const quickMenuMatch = normalizedText.match(/^qm_([1-8])$/);
+
+    if (quickMenuMatch) {
+        await resetToMenu(phone);
+        return handleMenuSelection(phone, quickMenuMatch[1], business, user);
     }
 
     // 7 - interception IA universelle : si le message ne ressemble pas à une réponse

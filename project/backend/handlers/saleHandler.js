@@ -6,6 +6,7 @@ import { createSale } from "../services/saleService.js";
 import { createDebt } from "../services/debtService.js";
 import { createInvoiceRecord } from "../services/invoiceService.js";
 import { generateInvoicePdf } from "../services/pdfService.js";
+import { logEvent } from "../services/loggerService.js";
 import { matchProductByName } from "../utils/productMatcher.js";
 import { STEPS } from "../utils/steps.js";
 import { formatFCFA, parsePositiveNumber, parseYesNo } from "../utils/format.js";
@@ -318,6 +319,8 @@ async function handleConfirm(phone, text, conversation, business) {
         await resetToMenu(phone);
         return sendWhatsAppMessage(phone, "❌ Une erreur est survenue lors de l'enregistrement de la vente.");
     }
+
+    await logEvent(business.id, "vente", `Vente ${sale.invoice_number} — ${formatFCFA(sale.total_amount)}`);
 
     for (const item of items) {
         await decrementStock(item.product_id, item.quantity);

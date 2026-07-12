@@ -9,7 +9,7 @@ export const STEPS = {
     NAME: "NAME",
     BUSINESS_NAME: "BUSINESS_NAME",
     CITY: "CITY",
-    SECTOR: "SECTOR",
+    LOGO: "LOGO",
 
     // --- Menu principal ---
     MENU: "MENU",
@@ -57,7 +57,7 @@ export const STEPS = {
     COMPANY_EDIT_LOGO: "COMPANY_EDIT_LOGO",
     COMPANY_ADD_NAME: "COMPANY_ADD_NAME",
     COMPANY_ADD_CITY: "COMPANY_ADD_CITY",
-    COMPANY_ADD_SECTOR: "COMPANY_ADD_SECTOR",
+    COMPANY_ADD_LOGO: "COMPANY_ADD_LOGO",
     COMPANY_SWITCH: "COMPANY_SWITCH",
     COMPANY_DELETE_CONFIRM: "COMPANY_DELETE_CONFIRM",
 
@@ -78,7 +78,7 @@ export const REGISTRATION_STEPS = [
     STEPS.NAME,
     STEPS.BUSINESS_NAME,
     STEPS.CITY,
-    STEPS.SECTOR
+    STEPS.LOGO
 ];
 
 export function stepBelongsTo(step, prefix) {
