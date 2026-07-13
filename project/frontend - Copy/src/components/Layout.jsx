@@ -1,9 +1,8 @@
-import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import {
   LayoutDashboard, ShoppingCart, Package, CreditCard,
-  BarChart3, MessageSquare, LogOut, Menu, X, ChevronRight,
-  Settings, ChevronsUpDown, Check
+  BarChart3, MessageSquare, LogOut, Menu, X, ChevronRight
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -14,23 +13,16 @@ const navItems = [
   { to: '/credits', icon: CreditCard, label: 'Créances' },
   { to: '/reports', icon: BarChart3, label: 'Rapports' },
   { to: '/simulator', icon: MessageSquare, label: 'Simulateur Bot' },
-  { to: '/account', icon: Settings, label: 'Mon compte' },
 ]
 
 export default function Layout() {
-  const { business, businesses, switchBusiness, signOut } = useAuth()
+  const { business, signOut } = useAuth()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [switcherOpen, setSwitcherOpen] = useState(false)
 
   async function handleSignOut() {
     await signOut()
     navigate('/')
-  }
-
-  async function handleSwitch(id) {
-    setSwitcherOpen(false)
-    if (id !== business?.id) await switchBusiness(id)
   }
 
   return (
@@ -59,40 +51,12 @@ export default function Layout() {
           </button>
         </div>
 
-        {/* Business switcher */}
-        <div className="relative px-4 py-4 border-b border-white/10">
-          <button
-            onClick={() => setSwitcherOpen(o => !o)}
-            className="w-full bg-white/5 hover:bg-white/10 rounded-xl px-4 py-3 flex items-center gap-2 text-left transition-colors"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="text-white font-semibold text-sm truncate">{business?.name || 'Mon Commerce'}</p>
-              <p className="text-white/50 text-xs mt-0.5">{business?.city} · {business?.sector || 'Commerce'}</p>
-            </div>
-            {businesses.length > 1 && <ChevronsUpDown size={14} className="text-white/40 flex-shrink-0" />}
-          </button>
-
-          {switcherOpen && businesses.length > 1 && (
-            <div className="absolute left-4 right-4 top-full mt-1 bg-navy-800 border border-white/10 rounded-xl shadow-xl z-40 overflow-hidden">
-              {businesses.map(b => (
-                <button
-                  key={b.id}
-                  onClick={() => handleSwitch(b.id)}
-                  className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-sm text-white/80 hover:bg-white/10 transition-colors"
-                >
-                  <span className="flex-1 truncate">{b.name}</span>
-                  {b.id === business?.id && <Check size={14} className="text-brand-400 flex-shrink-0" />}
-                </button>
-              ))}
-              <Link
-                to="/account"
-                onClick={() => setSwitcherOpen(false)}
-                className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-xs text-brand-400 hover:bg-white/10 border-t border-white/10 transition-colors"
-              >
-                Gérer mes entreprises
-              </Link>
-            </div>
-          )}
+        {/* Business info */}
+        <div className="px-4 py-4 border-b border-white/10">
+          <div className="bg-white/5 rounded-xl px-4 py-3">
+            <p className="text-white font-semibold text-sm truncate">{business?.name || 'Mon Commerce'}</p>
+            <p className="text-white/50 text-xs mt-0.5">{business?.city} · {business?.sector || 'Commerce'}</p>
+          </div>
         </div>
 
         {/* Navigation */}

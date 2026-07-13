@@ -43,7 +43,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (business?.id) loadData()
-    else setLoading(false)
   }, [business])
 
   async function loadData() {

@@ -13,7 +13,6 @@ import Stock from './pages/Stock'
 import Credits from './pages/Credits'
 import Reports from './pages/Reports'
 import Simulator from './pages/Simulator'
-import Account from './pages/Account'
 
 import Layout from './components/Layout'
 
@@ -133,11 +132,6 @@ export default function App() {
             <Route
               path="simulator"
               element={<Simulator />}
-            />
-
-            <Route
-              path="account"
-              element={<Account />}
             />
 
           </Route>

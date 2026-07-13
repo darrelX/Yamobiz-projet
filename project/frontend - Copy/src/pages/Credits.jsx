@@ -34,7 +34,6 @@ export default function Credits() {
 
   useEffect(() => {
     if (business?.id) load()
-    else setLoading(false)
   }, [business])
 
   async function load() {

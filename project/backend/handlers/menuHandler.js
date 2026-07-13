@@ -254,7 +254,7 @@ export function buildProductListMessage(products, title) {
         `${i + 1}. ${p.name} — ${p.price} FCFA (stock : ${p.stock_quantity} ${p.unit})`
     );
 
-    return `${title}\n\n${lines.join("\n")}\n\nRépondez avec le *numéro* du produit vendu.`;
+    return `${title}\n\n${lines.join("\n")}\n\nRépondez avec le *numéro* du produit à vendre.`;
 }
 
 export function buildStockListMessage(products) {

@@ -42,7 +42,6 @@ export default function Sales() {
 
   useEffect(() => {
     if (business?.id) loadData()
-    else setLoading(false)
   }, [business])
 
   async function loadData() {

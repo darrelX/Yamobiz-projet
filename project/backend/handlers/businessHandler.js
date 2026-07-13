@@ -69,9 +69,9 @@ export async function showCompanyMenu(phone, business, user) {
 export async function startEditBusinessFromAi(phone, business, item) {
 
     const fieldMap = {
-        name: { key: "name", label: "nom de l'entreprise", step: STEPS.COMPANY_EDIT_NAME, prompt: "Nouveau nom de l'entreprise ?" },
-        city: { key: "city", label: "ville", step: STEPS.COMPANY_EDIT_CITY, prompt: "Nouvelle ville ?" },
-        sector: { key: "sector", label: "secteur d'activité", step: STEPS.COMPANY_EDIT_SECTOR, prompt: "Nouveau secteur d'activité ?" }
+        name: { key: "name", label: "nom de l'entreprise", step: STEPS.COMPANY_EDIT_NAME, prompt: `Nouveau nom de l'entreprise ? (L'actuel nom est "${business.name}")` },
+        city: { key: "city", label: "ville", step: STEPS.COMPANY_EDIT_CITY, prompt: `Nouvelle ville ? (L'actuelle ville est "${business.city || "-"}")` },
+        sector: { key: "sector", label: "secteur d'activité", step: STEPS.COMPANY_EDIT_SECTOR, prompt: `Nouveau secteur d'activité ? (L'actuel secteur est "${business.sector || "-"}")` }
     };
 
     const config = fieldMap[item.field] || fieldMap.name;
@@ -143,17 +143,17 @@ async function handleCompanyMenuChoice(phone, text, business, user) {
 
     if (choice === "1") {
         await updateConversation(phone, STEPS.COMPANY_EDIT_NAME, {});
-        return sendWhatsAppMessage(phone, "Nouveau nom de l'entreprise ?");
+        return sendWhatsAppMessage(phone, "Quel est le nouveau nom de l'entreprise ?");
     }
 
     if (choice === "2") {
         await updateConversation(phone, STEPS.COMPANY_EDIT_CITY, {});
-        return sendWhatsAppMessage(phone, "Nouvelle ville ?");
+        return sendWhatsAppMessage(phone, "Quelle est la Nouvelle ville de l'entreprise ?");
     }
 
     if (choice === "3") {
         await updateConversation(phone, STEPS.COMPANY_EDIT_SECTOR, {});
-        return sendWhatsAppMessage(phone, "Nouveau secteur d'activité ?");
+        return sendWhatsAppMessage(phone, "Quel est le nouveau secteur d'activité de l'entreprise ?");
     }
 
     if (choice === "4") {

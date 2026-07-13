@@ -25,7 +25,6 @@ export default function Reports() {
 
   useEffect(() => {
     if (business?.id) loadReport()
-    else setLoading(false)
   }, [business, period])
 
   async function loadReport() {

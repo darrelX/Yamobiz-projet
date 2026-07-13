@@ -31,7 +31,6 @@ export default function Stock() {
 
   useEffect(() => {
     if (business?.id) load()
-    else setLoading(false)
   }, [business])
 
   async function load() {

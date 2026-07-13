@@ -29,7 +29,7 @@ export async function showStockMenu(phone, business) {
 
     return sendWhatsAppMessage(
         phone,
-        `📦 *Votre stock*\n\n${list}\n\n1️⃣ Ajouter un produit\nEntrez le *numéro* d'un produit pour le gérer (modifier, ajuster le stock, historique, supprimer)\n0️⃣ Retour au menu\n\n_Astuce : vous pouvez aussi m'écrire directement, ex. "ajoute 10 riz à 500 et 20 sucre à 300"._`
+        `📦 *Votre stock*\n\n${list}\n\n🅰️ Ajouter un produit  (répondez *A*)\nEntrez le *numéro* d'un produit pour le gérer (modifier, ajuster le stock, historique, supprimer)\n0️⃣ Retour au menu\n\n_Astuce : vous pouvez aussi m'écrire directement, ex. "ajoute 10 riz à 500 et 20 sucre à 300"._`
     );
 }
 
@@ -237,9 +237,9 @@ async function handleBulkAddConfirm(phone, text, conversation, business) {
 
 async function handleStockMenuChoice(phone, text, conversation, business) {
 
-    const choice = (text || "").trim();
+    const choice = (text || "").trim().toLowerCase();
 
-    if (choice === "1") {
+    if (choice === "A" || choice === "a") {
         await updateConversation(phone, STEPS.STOCK_ADD_NAME, {});
         return sendWhatsAppMessage(phone, "Quel est le nom du nouveau produit ?");
     }
