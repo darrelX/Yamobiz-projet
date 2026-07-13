@@ -1,14 +1,21 @@
 import { sendWhatsAppMessage, sendWhatsAppButtons } from "../services/whatsapp.js";
 import { updateConversation, resetToMenu, deleteConversation } from "../services/conversationService.js";
-import { deleteUser } from "../services/userService.js";
+import { deleteUser, updateUser } from "../services/userService.js";
 import { deleteBusiness, getBusinessesByUserId } from "../services/businessService.js";
 import { deleteProductsByBusiness } from "../services/productService.js";
 import { deleteSalesByBusiness } from "../services/saleService.js";
 import { deleteDebtsByBusiness } from "../services/debtService.js";
 import { deleteCustomersByBusiness } from "../services/customerService.js";
 import { deleteInvoicesByBusiness } from "../services/invoiceService.js";
+import { normalizeLanguageInput } from "../utils/language.js";
+import { setCurrentLanguage } from "../utils/requestContext.js";
+import { t } from "../utils/i18n.js";
 import { STEPS } from "../utils/steps.js";
 import { showMainMenu } from "./menuHandler.js";
+
+function bizWarning(count) {
+    return count > 1 ? t("account.bizWarningMultiple", { count }) : t("account.bizWarningSingle");
+}
 
 /**
  * Point d'entrée "supprimer mon compte" détecté par l'IA depuis n'importe quelle
@@ -22,18 +29,38 @@ export async function startAccountDeleteFromAi(phone, business, user) {
     await updateConversation(phone, STEPS.ACCOUNT_DELETE_CONFIRM, {});
 
     const businesses = await getBusinessesByUserId(user.id);
-    const bizWarning = businesses.length > 1
-        ? `vos ${businesses.length} entreprises`
-        : "votre entreprise";
 
     return sendWhatsAppButtons(
         phone,
-        `❗ Vous avez demandé la suppression de votre compte.\n\n⚠️ Cela effacera définitivement ${bizWarning}, tout le stock, toutes les commandes et toutes les créances. Cette action est irréversible.\n\nConfirmez-vous ?`,
+        t("account.deleteRequestWarning", { bizWarning: bizWarning(businesses.length) }),
         [
-            { id: "confirm_delete", title: "✅ Oui, supprimer" },
-            { id: "menu", title: "❌ Annuler" }
+            { id: "confirm_delete", title: t("common.yesDeleteButton") },
+            { id: "menu", title: t("common.cancelButton") }
         ]
     );
+}
+
+/**
+ * Point d'entrée "change la langue en X" détecté par l'IA depuis n'importe quelle
+ * rubrique (ex: "je veux que ce soit en anglais"). Applique directement — changer
+ * une préférence d'affichage n'est pas une action sensible, comme les autres
+ * changements de préférence (nom, ville...) qui ne demandent déjà pas de confirmation.
+ */
+export async function changeLanguageFromAi(phone, business, user, languageRaw) {
+
+    if (!languageRaw || !String(languageRaw).trim()) {
+        await updateConversation(phone, STEPS.ACCOUNT_LANGUAGE, {});
+        return sendWhatsAppMessage(phone, t("account.languagePromptShort"));
+    }
+
+    const language = normalizeLanguageInput(String(languageRaw));
+
+    await updateUser(user.id, { language });
+    setCurrentLanguage(language);
+
+    await sendWhatsAppMessage(phone, t("account.languageUpdated"));
+
+    return showMainMenu(phone, business);
 }
 
 export async function showAccountMenu(phone, business, user) {
@@ -41,16 +68,14 @@ export async function showAccountMenu(phone, business, user) {
     await updateConversation(phone, STEPS.ACCOUNT_MENU, {});
 
     const businesses = await getBusinessesByUserId(user.id);
-    const bizWarning = businesses.length > 1
-        ? `vos ${businesses.length} entreprises`
-        : "votre entreprise";
 
     return sendWhatsAppButtons(
         phone,
-        `⚙️ *Mon compte*\n\nTéléphone : ${user.phone}\n\n⚠️ La suppression du compte effacera définitivement ${bizWarning}, tout le stock, toutes les commandes et toutes les créances.`,
+        t("account.menuBody", { phone: user.phone, bizWarning: bizWarning(businesses.length) }),
         [
-            { id: "account_delete", title: "🗑️ Supprimer" },
-            { id: "menu", title: "⬅️ Retour" }
+            { id: "account_language", title: t("account.languageButton") },
+            { id: "account_delete", title: t("account.deleteButton") },
+            { id: "menu", title: t("common.backButton") }
         ]
     );
 }
@@ -64,6 +89,9 @@ export async function handleAccount(phone, text, conversation, business, user) {
 
         case STEPS.ACCOUNT_DELETE_CONFIRM:
             return handleAccountDeleteConfirm(phone, text, business, user);
+
+        case STEPS.ACCOUNT_LANGUAGE:
+            return handleAccountLanguage(phone, text, business, user);
 
         default:
             await resetToMenu(phone);
@@ -81,15 +109,43 @@ async function handleAccountMenuChoice(phone, text, business, user) {
 
         return sendWhatsAppButtons(
             phone,
-            "❗ Confirmez-vous la suppression *définitive* de votre compte et de toutes vos données ? Cette action est irréversible.",
+            t("account.deleteConfirmQuestion"),
             [
-                { id: "confirm_delete", title: "✅ Oui, supprimer" },
-                { id: "menu", title: "❌ Annuler" }
+                { id: "confirm_delete", title: t("common.yesDeleteButton") },
+                { id: "menu", title: t("common.cancelButton") }
             ]
         );
     }
 
+    if (choice === "account_language") {
+
+        await updateConversation(phone, STEPS.ACCOUNT_LANGUAGE, {});
+
+        return sendWhatsAppMessage(phone, t("account.languagePrompt"));
+    }
+
     await resetToMenu(phone);
+    return showMainMenu(phone, business);
+}
+
+async function handleAccountLanguage(phone, text, business, user) {
+
+    if (!text || !text.trim()) {
+        return sendWhatsAppMessage(phone, t("account.languageRequired"));
+    }
+
+    const language = normalizeLanguageInput(text);
+
+    await updateUser(user.id, { language });
+
+    // Effet immédiat sur CETTE réponse : le message de confirmation ci-dessous
+    // (et tout ce qui suit) est déjà envoyé dans la nouvelle langue.
+    setCurrentLanguage(language);
+
+    await resetToMenu(phone);
+
+    await sendWhatsAppMessage(phone, t("account.languageUpdated"));
+
     return showMainMenu(phone, business);
 }
 
@@ -99,7 +155,7 @@ async function handleAccountDeleteConfirm(phone, text, business, user) {
 
     if (choice !== "confirm_delete" && !["oui", "o", "yes", "1"].includes(choice)) {
         await resetToMenu(phone);
-        await sendWhatsAppMessage(phone, "Suppression annulée. Vos données sont conservées.");
+        await sendWhatsAppMessage(phone, t("account.deleteCancelled"));
         return showMainMenu(phone, business);
     }
 
@@ -117,8 +173,5 @@ async function handleAccountDeleteConfirm(phone, text, business, user) {
     await deleteUser(user.id);
     await deleteConversation(phone);
 
-    return sendWhatsAppMessage(
-        phone,
-        "✅ Votre compte et toutes vos entreprises ont été supprimés définitivement. Merci d'avoir utilisé Yamobiz. 👋"
-    );
+    return sendWhatsAppMessage(phone, t("account.deleted"));
 }

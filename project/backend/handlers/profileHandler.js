@@ -1,6 +1,7 @@
 import { sendWhatsAppMessage, sendWhatsAppButtons } from "../services/whatsapp.js";
 import { updateConversation, resetToMenu } from "../services/conversationService.js";
 import { updateUser } from "../services/userService.js";
+import { t } from "../utils/i18n.js";
 import { STEPS } from "../utils/steps.js";
 import { showMainMenu } from "./menuHandler.js";
 
@@ -8,14 +9,14 @@ export async function showProfileMenu(phone, business, user) {
 
     await updateConversation(phone, STEPS.PROFILE_MENU, {});
 
-    const name = user.name || "(non renseigné)";
+    const name = user.name || t("profile.notSet");
 
     return sendWhatsAppButtons(
         phone,
-        `👤 *Mon profil*\n\nNom : ${name}\nTéléphone : ${user.phone}`,
+        t("profile.menuBody", { name, phone: user.phone }),
         [
-            { id: "profile_edit_name", title: "✏️ Modifier nom" },
-            { id: "menu", title: "⬅️ Retour" }
+            { id: "profile_edit_name", title: t("profile.editNameButton") },
+            { id: "menu", title: t("common.backButton") }
         ]
     );
 }
@@ -33,7 +34,7 @@ export async function startEditProfileNameFromAi(phone, business, user, value) {
     }
 
     await updateConversation(phone, STEPS.PROFILE_EDIT_NAME, {});
-    return sendWhatsAppMessage(phone, "Quel est votre nouveau nom ?");
+    return sendWhatsAppMessage(phone, t("profile.askNewName"));
 }
 
 export async function handleProfile(phone, text, conversation, business, user) {
@@ -58,7 +59,7 @@ async function handleProfileMenuChoice(phone, text, business, user) {
 
     if (choice === "profile_edit_name" || choice === "1") {
         await updateConversation(phone, STEPS.PROFILE_EDIT_NAME, {});
-        return sendWhatsAppMessage(phone, "Quel est votre nouveau nom ?");
+        return sendWhatsAppMessage(phone, t("profile.askNewName"));
     }
 
     await resetToMenu(phone);
@@ -68,7 +69,7 @@ async function handleProfileMenuChoice(phone, text, business, user) {
 async function handleProfileEditName(phone, text, business, user) {
 
     if (!text || !text.trim()) {
-        return sendWhatsAppMessage(phone, "❌ Merci d'indiquer un nom valide.");
+        return sendWhatsAppMessage(phone, t("profile.nameRequired"));
     }
 
     const updated = await updateUser(user.id, { name: text.trim() });
@@ -76,10 +77,10 @@ async function handleProfileEditName(phone, text, business, user) {
     await resetToMenu(phone);
 
     if (!updated) {
-        await sendWhatsAppMessage(phone, "❌ Une erreur est survenue lors de la mise à jour du profil.");
+        await sendWhatsAppMessage(phone, t("profile.updateError"));
         return showMainMenu(phone, business);
     }
 
-    await sendWhatsAppMessage(phone, `✅ Nom mis à jour : *${updated.name}*`);
+    await sendWhatsAppMessage(phone, t("profile.nameUpdated", { name: updated.name }));
     return showMainMenu(phone, business);
 }

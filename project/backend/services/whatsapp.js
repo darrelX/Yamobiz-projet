@@ -8,6 +8,7 @@ import {
     WHATSAPP_API_VERSION
 } from "../config/whatsapp.js";
 import { MAIN_MENU_ITEMS } from "../utils/mainMenuItems.js";
+import { t } from "../utils/i18n.js";
 
 const authHeaders = {
     Authorization: `Bearer ${WHATSAPP_TOKEN}`,
@@ -23,16 +24,17 @@ export const QUICK_MENU_PREFIX = "qm_";
 /**
  * Envoie le bouton "Choisir" omniprésent, accroché après (quasi) chaque réponse du
  * bot : il ouvre directement la même liste d'options que le menu principal, en un
- * seul tap, depuis N'IMPORTE QUEL écran de l'application.
+ * seul tap, depuis N'IMPORTE QUEL écran de l'application. Les libellés viennent de
+ * t() (fichiers de langue préchargés), donc déjà dans la langue de l'utilisateur.
  */
 async function sendMenuShortcut(phone) {
     try {
 
         const sections = [{
-            title: "Menu principal",
+            title: t("common.mainMenuTitle"),
             rows: MAIN_MENU_ITEMS.map(item => ({
                 id: `${QUICK_MENU_PREFIX}${item.id}`,
-                title: item.title
+                title: t(item.titleKey)
             }))
         }];
 
@@ -42,9 +44,9 @@ async function sendMenuShortcut(phone) {
             type: "interactive",
             interactive: {
                 type: "list",
-                body: { text: "🏠 Accès rapide" },
+                body: { text: t("common.quickAccessBody") },
                 action: {
-                    button: "Choisir",
+                    button: t("common.chooseButton"),
                     sections
                 }
             }

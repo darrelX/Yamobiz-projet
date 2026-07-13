@@ -4,7 +4,50 @@ import { getOpenDebts, getDebtById, recordPayment } from "../services/debtServic
 import { matchCustomerByName } from "../utils/productMatcher.js";
 import { STEPS } from "../utils/steps.js";
 import { formatFCFA, parsePositiveNumber, formatDateTime } from "../utils/format.js";
+import { t } from "../utils/i18n.js";
 import { showMainMenu } from "./menuHandler.js";
+
+/**
+ * Point d'entrée "efface la créance de X" détecté par l'IA depuis n'importe quelle
+ * rubrique. On applique directement (comme un paiement complet du restant dû),
+ * sans écran de confirmation supplémentaire — cohérent avec le fait que
+ * l'enregistrement d'un paiement ne demande déjà pas de confirmation dans le flow
+ * manuel.
+ */
+export async function forgiveDebtFromAi(phone, business, item) {
+
+    const debts = await getOpenDebts(business.id);
+
+    if (!debts.length) {
+        await sendWhatsAppMessage(phone, t("debt.noneOpen"));
+        return showMainMenu(phone, business);
+    }
+
+    const customersWithDebt = debts.map(d => ({ id: d.id, name: d.customers?.name || "" }));
+    const match = matchCustomerByName(customersWithDebt, item.customer_query);
+
+    if (!match) {
+        await sendWhatsAppMessage(phone, t("debt.notFoundForCustomer", { query: item.customer_query }));
+        return showDebtMenu(phone, business);
+    }
+
+    const debt = await getDebtById(match.id, business.id);
+    const remaining = Number(debt.amount_total) - Number(debt.amount_paid);
+
+    const updated = await recordPayment(debt.id, remaining);
+
+    if (!updated) {
+        await sendWhatsAppMessage(phone, t("debt.forgiveError"));
+        return showMainMenu(phone, business);
+    }
+
+    await sendWhatsAppMessage(
+        phone,
+        t("debt.forgiven", { name: debt.customers?.name || t("common.thisCustomer"), amount: formatFCFA(remaining) })
+    );
+
+    return showMainMenu(phone, business);
+}
 
 export async function showDebtMenu(phone, business) {
 
@@ -12,7 +55,7 @@ export async function showDebtMenu(phone, business) {
 
     if (!debts.length) {
         await resetToMenu(phone);
-        await sendWhatsAppMessage(phone, "✅ Aucune créance en cours. Bravo !");
+        await sendWhatsAppMessage(phone, t("debt.noneCongrats"));
         return showMainMenu(phone, business);
     }
 
@@ -33,7 +76,7 @@ export async function startPayDebtFromAi(phone, business, item) {
     const debts = await getOpenDebts(business.id);
 
     if (!debts.length) {
-        await sendWhatsAppMessage(phone, "✅ Aucune créance en cours actuellement.");
+        await sendWhatsAppMessage(phone, t("debt.noneOpen"));
         return showMainMenu(phone, business);
     }
 
@@ -41,10 +84,7 @@ export async function startPayDebtFromAi(phone, business, item) {
     const match = matchCustomerByName(customersWithDebt, item.customer_query);
 
     if (!match) {
-        await sendWhatsAppMessage(
-            phone,
-            `❌ Je n'ai pas trouvé de créance ouverte pour "${item.customer_query}".`
-        );
+        await sendWhatsAppMessage(phone, t("debt.notFoundForCustomer", { query: item.customer_query }));
         return showDebtMenu(phone, business);
     }
 
@@ -57,7 +97,7 @@ export async function startPayDebtFromAi(phone, business, item) {
         if (amount > remaining) {
             await sendWhatsAppMessage(
                 phone,
-                `❌ Ce montant dépasse le restant dû de ${debt.customers?.name || "ce client"} (${formatFCFA(remaining)}).`
+                t("debt.amountExceedsRemainingFor", { name: debt.customers?.name || t("common.thisCustomer"), remaining: formatFCFA(remaining) })
             );
             return showDebtMenu(phone, business);
         }
@@ -65,18 +105,22 @@ export async function startPayDebtFromAi(phone, business, item) {
         const updated = await recordPayment(debt.id, amount);
 
         if (!updated) {
-            await sendWhatsAppMessage(phone, "❌ Une erreur est survenue lors de l'enregistrement du paiement.");
+            await sendWhatsAppMessage(phone, t("debt.paymentError"));
             return showMainMenu(phone, business);
         }
 
         await resetToMenu(phone);
 
-        const statusLabel = updated.status === "paid" ? "✅ Créance totalement soldée !" : "🟡 Paiement partiel enregistré.";
+        const statusLabel = updated.status === "paid" ? t("debt.fullySettled") : t("debt.partialRecorded");
         const newRemaining = Number(updated.amount_total) - Number(updated.amount_paid);
 
         await sendWhatsAppMessage(
             phone,
-            `${statusLabel}\n\nClient : ${debt.customers?.name || "-"}\nMontant payé : ${formatFCFA(amount)}\nRestant dû : ${formatFCFA(newRemaining)}`
+            `${statusLabel}\n\n${t("debt.paymentSummary", {
+                name: debt.customers?.name || "-",
+                paid: formatFCFA(amount),
+                remaining: formatFCFA(newRemaining)
+            })}`
         );
 
         return showMainMenu(phone, business);
@@ -89,7 +133,7 @@ export async function startPayDebtFromAi(phone, business, item) {
 
     return sendWhatsAppMessage(
         phone,
-        `Créance de ${debt.customers?.name || "client"} — restant dû : ${formatFCFA(remaining)}\n\nQuel montant a été payé ?`
+        t("debt.askAmountPaid", { name: debt.customers?.name || t("common.client"), remaining: formatFCFA(remaining) })
     );
 }
 
@@ -122,13 +166,13 @@ async function handleDebtSelection(phone, text, conversation, business) {
     const debtIds = conversation.data.debtIds || [];
 
     if (isNaN(index) || !debtIds[index]) {
-        return sendWhatsAppMessage(phone, "❌ Choix invalide. Entrez le numéro de la créance, ou 0 pour revenir au menu.");
+        return sendWhatsAppMessage(phone, t("debt.invalidChoice"));
     }
 
     const debt = await getDebtById(debtIds[index], business.id);
 
     if (!debt) {
-        return sendWhatsAppMessage(phone, "❌ Créance introuvable.");
+        return sendWhatsAppMessage(phone, t("debt.notFound"));
     }
 
     const remaining = Number(debt.amount_total) - Number(debt.amount_paid);
@@ -140,7 +184,7 @@ async function handleDebtSelection(phone, text, conversation, business) {
 
     return sendWhatsAppMessage(
         phone,
-        `Créance de ${debt.customers?.name || "client"} — restant dû : ${formatFCFA(remaining)}\n\nQuel montant a été payé ?`
+        t("debt.askAmountPaid", { name: debt.customers?.name || t("common.client"), remaining: formatFCFA(remaining) })
     );
 }
 
@@ -150,31 +194,28 @@ async function handleDebtAmount(phone, text, conversation, business) {
     const { selectedDebtId, remaining } = conversation.data;
 
     if (!amount) {
-        return sendWhatsAppMessage(phone, "❌ Merci d'indiquer un montant valide (nombre positif).");
+        return sendWhatsAppMessage(phone, t("debt.amountRequired"));
     }
 
     if (amount > remaining) {
-        return sendWhatsAppMessage(
-            phone,
-            `❌ Ce montant dépasse le restant dû (${formatFCFA(remaining)}). Merci de saisir un montant plus faible.`
-        );
+        return sendWhatsAppMessage(phone, t("debt.amountExceedsRemaining", { remaining: formatFCFA(remaining) }));
     }
 
     const debt = await recordPayment(selectedDebtId, amount);
 
     if (!debt) {
         await resetToMenu(phone);
-        return sendWhatsAppMessage(phone, "❌ Une erreur est survenue lors de l'enregistrement du paiement.");
+        return sendWhatsAppMessage(phone, t("debt.paymentError"));
     }
 
     await resetToMenu(phone);
 
-    const statusLabel = debt.status === "paid" ? "✅ Créance totalement soldée !" : "🟡 Paiement partiel enregistré.";
+    const statusLabel = debt.status === "paid" ? t("debt.fullySettled") : t("debt.partialRecorded");
     const newRemaining = Number(debt.amount_total) - Number(debt.amount_paid);
 
     await sendWhatsAppMessage(
         phone,
-        `${statusLabel}\n\nMontant payé : ${formatFCFA(amount)}\nRestant dû : ${formatFCFA(newRemaining)}`
+        `${statusLabel}\n\n${t("debt.paymentSummaryNoName", { paid: formatFCFA(amount), remaining: formatFCFA(newRemaining) })}`
     );
 
     return showMainMenu(phone, business);
@@ -184,8 +225,8 @@ function buildDebtListMessage(debts) {
 
     const lines = debts.map((d, i) => {
         const remaining = Number(d.amount_total) - Number(d.amount_paid);
-        return `${i + 1}. ${d.customers?.name || "Client"} — restant dû : ${formatFCFA(remaining)} (depuis le ${formatDateTime(d.created_at)})`;
+        return `${i + 1}. ${d.customers?.name || t("common.client")} — ${t("debt.remainingLabel")} : ${formatFCFA(remaining)} (${t("debt.sinceDate", { date: formatDateTime(d.created_at) })})`;
     });
 
-    return `💰 *Créances en cours*\n\n${lines.join("\n")}\n\nEntrez le *numéro* de la créance à régler, ou *0* pour revenir au menu.`;
+    return t("debt.listTitle", { list: lines.join("\n") });
 }

@@ -8,6 +8,8 @@ import { transcribeAudio } from "../services/geminiService.js";
 import { detectIntent } from "../services/intentService.js";
 import { normalizePhone } from "../utils/format.js";
 import { STEPS, REGISTRATION_STEPS, stepBelongsTo } from "../utils/steps.js";
+import { runWithLanguage } from "../utils/requestContext.js";
+import { t } from "../utils/i18n.js";
 
 import { handleRegistration } from "./registrationHandler.js";
 import { showMainMenu, handleMenuSelection, dispatchIntent } from "./menuHandler.js";
@@ -23,10 +25,12 @@ import { handleBulkDelete } from "./bulkDeleteHandler.js";
 
 // Mots/phrases qui ramènent explicitement au menu principal (ou annulent l'étape en
 // cours), depuis n'importe où dans l'application — reconnus AVANT toute autre logique,
-// donc toujours prioritaires, y compris pendant un ajout de produit ou une saisie en cours.
+// donc toujours prioritaires, y compris pendant un ajout de produit ou une saisie en
+// cours. Les variantes anglaises sont incluses pour que ça marche aussi en anglais.
 const MENU_KEYWORDS = new Set([
     "menu", "menu principal", "accueil", "retour au menu", "revenir au menu",
-    "annule", "annuler", "stop"
+    "annule", "annuler", "stop",
+    "main menu", "home", "back to menu", "cancel"
 ]);
 
 // Étapes de confirmation d'une action potentiellement irréversible ou déjà engagée :
@@ -37,6 +41,7 @@ const CONFIRM_STEPS = new Set([
     STEPS.SALE_CONFIRM,
     STEPS.SALE_AI_REVIEW,
     STEPS.SALE_ADD_MORE,
+    STEPS.SALE_EDIT_QUANTITY,
     STEPS.STOCK_DELETE_CONFIRM,
     STEPS.STOCK_ADD_BULK_REVIEW,
     STEPS.ACCOUNT_DELETE_CONFIRM,
@@ -48,9 +53,10 @@ const CONFIRM_STEPS = new Set([
 // Identifiants de boutons/listes générés par l'app elle-même : toujours traités par
 // le flow scénarisé correspondant, jamais réinterprétés par l'IA.
 const KNOWN_BUTTON_IDS = new Set([
-    "menu", "confirm_delete", "account_delete", "profile_edit_name",
+    "menu", "confirm_delete", "account_delete", "account_language", "profile_edit_name",
     "edit_name", "edit_price", "add_stock", "remove_stock", "history",
-    "delete", "back", "analysis_quick", "analysis_ai", "confirm_yes", "confirm_no"
+    "delete", "back", "analysis_quick", "analysis_ai", "confirm_yes", "confirm_no",
+    "lang_fr", "lang_en"
 ]);
 
 /**
@@ -89,6 +95,20 @@ export async function handleMessage(message) {
         return;
     }
 
+    // Récupérer l'utilisateur en tout premier, avant même le traitement d'un
+    // éventuel message vocal, pour que TOUT (y compris les messages d'erreur de
+    // transcription) puisse être traduit dans sa langue préférée.
+    const user = await getOrCreateUser(phone);
+
+    if (!user) {
+        return sendWhatsAppMessage(phone, "❌ Impossible de créer votre compte. Réessayez plus tard.");
+    }
+
+    return runWithLanguage(user.language, () => processMessage(phone, message, user));
+}
+
+async function processMessage(phone, message, user) {
+
     let text = (message.text || "").trim();
 
     // 0 - message vocal : transcrit par Gemini (qui accepte l'audio nativement), puis
@@ -100,38 +120,25 @@ export async function handleMessage(message) {
         const media = await downloadWhatsAppMedia(message.raw.audio.id);
 
         if (!media) {
-            return sendWhatsAppMessage(
-                phone,
-                "❌ Je n'ai pas pu récupérer votre message vocal. Réessayez, ou écrivez votre demande."
-            );
+            return sendWhatsAppMessage(phone, t("voice.downloadError"));
         }
 
         const transcription = await transcribeAudio(media.buffer, media.mimeType || "audio/ogg");
 
         if (!transcription) {
-            return sendWhatsAppMessage(
-                phone,
-                "❌ Je n'ai pas réussi à comprendre votre message vocal. Réessayez, ou écrivez votre demande."
-            );
+            return sendWhatsAppMessage(phone, t("voice.transcriptionError"));
         }
 
-        await sendWhatsAppMessage(phone, `🎤 J'ai compris : "${transcription}"`, { skipMenuFooter: true });
+        await sendWhatsAppMessage(phone, t("voice.understood", { transcription }), { skipMenuFooter: true });
 
         text = transcription.trim();
-    }
-
-    // 1 - récupérer ou créer l'utilisateur
-    const user = await getOrCreateUser(phone);
-
-    if (!user) {
-        return sendWhatsAppMessage(phone, "❌ Impossible de créer votre compte. Réessayez plus tard.");
     }
 
     // 2 - récupérer ou créer la conversation
     const conversation = await getOrCreateConversation(phone);
 
     if (!conversation) {
-        return sendWhatsAppMessage(phone, "❌ Une erreur est survenue. Réessayez plus tard.");
+        return sendWhatsAppMessage(phone, t("common.genericError"));
     }
 
     // 3 - récupérer TOUTES les entreprises de l'utilisateur (support multi-entreprises)
@@ -175,9 +182,9 @@ export async function handleMessage(message) {
     // 7 - interception IA universelle : si le message ne ressemble pas à une réponse
     // structurée attendue par l'étape courante, on tente d'abord de comprendre une
     // intention globale (vente, stock, créances, analyse, profil, entreprise,
-    // compte...) avant de retomber sur le flow scénarisé en cours. Le scénario
-    // classique (boutons/numéros) reste la référence tant qu'on le suit ; l'IA ne
-    // prend le relais QUE lorsque la réponse s'en écarte.
+    // compte, langue...) avant de retomber sur le flow scénarisé en cours. Le
+    // scénario classique (boutons/numéros) reste la référence tant qu'on le suit ;
+    // l'IA ne prend le relais QUE lorsque la réponse s'en écarte.
     if (step !== STEPS.MENU && !isStructuredReply(step, text)) {
 
         const [products, customers] = await Promise.all([

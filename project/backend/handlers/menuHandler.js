@@ -3,6 +3,7 @@ import { updateConversation, resetToMenu } from "../services/conversationService
 import { getProductsByBusiness } from "../services/productService.js";
 import { getCustomersByBusiness } from "../services/customerService.js";
 import { detectIntent } from "../services/intentService.js";
+import { t } from "../utils/i18n.js";
 import { STEPS } from "../utils/steps.js";
 import { MAIN_MENU_ITEMS } from "../utils/mainMenuItems.js";
 
@@ -12,14 +13,14 @@ import { MAIN_MENU_ITEMS } from "../utils/mainMenuItems.js";
 export async function showMainMenu(phone, business) {
 
     const sections = [{
-        title: "Menu principal",
-        rows: MAIN_MENU_ITEMS
+        title: t("common.mainMenuTitle"),
+        rows: MAIN_MENU_ITEMS.map(item => ({ id: item.id, title: t(item.titleKey) }))
     }];
 
     return sendWhatsAppList(
         phone,
-        `Bonjour ${business.name} 👋\n\nQue voulez-vous faire ? Vous pouvez aussi m'écrire ou m'envoyer un *message vocal* à tout moment, où que vous soyez dans l'application — ex. "je veux vendre 5 sacs de riz", "montre-moi mon inventaire", "modifie le prix du riz à 600".`,
-        "Choisir",
+        t("menu.greeting", { businessName: business.name }),
+        t("common.chooseButton"),
         sections,
         null,
         { skipMenuFooter: true }
@@ -42,15 +43,12 @@ export async function handleMenuSelection(phone, text, business, user) {
 
             if (!products.length) {
                 await resetToMenu(phone);
-                return sendWhatsAppMessage(
-                    phone,
-                    "❌ Vous n'avez encore aucun produit en stock.\n\nAllez d'abord dans *2️⃣ Gérer le stock* pour en ajouter."
-                );
+                return sendWhatsAppMessage(phone, t("menu.noProducts"));
             }
 
             await updateConversation(phone, STEPS.SALE_SELECT_PRODUCT, { items: [] });
 
-            return sendWhatsAppMessage(phone, buildProductListMessage(products, "🛒 Nouvelle vente"));
+            return sendWhatsAppMessage(phone, buildProductListMessage(products, t("sale.newSaleTitle")));
         }
 
         case "2": {
@@ -152,10 +150,36 @@ export async function dispatchIntent(phone, business, user, intentResult, contex
             return true;
         }
 
+        case "LOW_STOCK_ALERT": {
+            const { showLowStockFromAi } = await import("./stockHandler.js");
+            await showLowStockFromAi(phone, business, intentResult.items[0]?.threshold);
+            return true;
+        }
+
         case "DELETE_CUSTOMERS": {
             if (!intentResult.items.length) return false;
             const { startBulkDelete } = await import("./bulkDeleteHandler.js");
             await startBulkDelete(phone, business, "customers", intentResult.items, { customers });
+            return true;
+        }
+
+        case "LIST_CUSTOMERS": {
+            const { listCustomersFromAi } = await import("./customerHandler.js");
+            await listCustomersFromAi(phone, business);
+            return true;
+        }
+
+        case "CREATE_CUSTOMER": {
+            if (!intentResult.items.length) return false;
+            const { createCustomerFromAi } = await import("./customerHandler.js");
+            await createCustomerFromAi(phone, business, intentResult.items[0]);
+            return true;
+        }
+
+        case "EDIT_CUSTOMER": {
+            if (!intentResult.items.length) return false;
+            const { editCustomerFromAi } = await import("./customerHandler.js");
+            await editCustomerFromAi(phone, business, intentResult.items[0]);
             return true;
         }
 
@@ -166,13 +190,20 @@ export async function dispatchIntent(phone, business, user, intentResult, contex
             return true;
         }
 
+        case "FORGIVE_DEBT": {
+            if (!intentResult.items.length) return false;
+            const { forgiveDebtFromAi } = await import("./debtHandler.js");
+            await forgiveDebtFromAi(phone, business, intentResult.items[0]);
+            return true;
+        }
+
         case "LIST_DEBTS": {
             const { showDebtMenu } = await import("./debtHandler.js");
             await showDebtMenu(phone, business);
             return true;
         }
 
-        case "LIST_ORDERS": {
+        case "LIST_INVOICES": {
             const { showOrderMenu } = await import("./orderHandler.js");
             await showOrderMenu(phone, business);
             return true;
@@ -185,6 +216,12 @@ export async function dispatchIntent(phone, business, user, intentResult, contex
             return true;
         }
 
+        case "CANCEL_LAST_SALE": {
+            const { startCancelLastSaleFromAi } = await import("./orderHandler.js");
+            await startCancelLastSaleFromAi(phone, business);
+            return true;
+        }
+
         case "ANALYSIS_QUESTION": {
             const { startAnalysisFromAi } = await import("./aiAnalysisHandler.js");
             const question = intentResult.items[0]?.question || "";
@@ -192,9 +229,9 @@ export async function dispatchIntent(phone, business, user, intentResult, contex
             return true;
         }
 
-        case "SHOW_REVENUE": {
-            const { showRevenueFromAi } = await import("./businessHandler.js");
-            await showRevenueFromAi(phone, business, user);
+        case "SHOW_FINANCES": {
+            const { showFinancesFromAi } = await import("./businessHandler.js");
+            await showFinancesFromAi(phone, business, user);
             return true;
         }
 
@@ -214,6 +251,36 @@ export async function dispatchIntent(phone, business, user, intentResult, contex
             if (!intentResult.items.length) return false;
             const { startEditBusinessFromAi } = await import("./businessHandler.js");
             await startEditBusinessFromAi(phone, business, intentResult.items[0]);
+            return true;
+        }
+
+        case "SWITCH_BUSINESS": {
+            if (!intentResult.items.length) return false;
+            const { switchBusinessFromAi } = await import("./businessHandler.js");
+            await switchBusinessFromAi(phone, user, intentResult.items[0]?.business_query);
+            return true;
+        }
+
+        case "ADD_BUSINESS": {
+            const { addBusinessFromAi } = await import("./businessHandler.js");
+            await addBusinessFromAi(phone);
+            return true;
+        }
+
+        case "LIST_BUSINESSES": {
+            const { listBusinessesFromAi } = await import("./businessHandler.js");
+            await listBusinessesFromAi(phone, business, user);
+            return true;
+        }
+
+        case "HELP": {
+            await sendWhatsAppMessage(phone, t("menu.help"));
+            return true;
+        }
+
+        case "CHANGE_LANGUAGE": {
+            const { changeLanguageFromAi } = await import("./accountHandler.js");
+            await changeLanguageFromAi(phone, business, user, intentResult.items[0]?.language);
             return true;
         }
 
@@ -251,10 +318,10 @@ async function handleFreeTextMessage(phone, text, business, user) {
 export function buildProductListMessage(products, title) {
 
     const lines = products.map((p, i) =>
-        `${i + 1}. ${p.name} — ${p.price} FCFA (stock : ${p.stock_quantity} ${p.unit})`
+        `${i + 1}. ${p.name} — ${p.price} FCFA (${t("common.stockLabel")} : ${p.stock_quantity} ${p.unit})`
     );
 
-    return `${title}\n\n${lines.join("\n")}\n\nRépondez avec le *numéro* du produit à vendre.`;
+    return `${title}\n\n${lines.join("\n")}\n\n${t("sale.chooseProductFooter")}`;
 }
 
 export function buildStockListMessage(products) {

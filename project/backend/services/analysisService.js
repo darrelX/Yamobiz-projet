@@ -1,6 +1,9 @@
 import alasql from "alasql";
 import { askGemini } from "./geminiService.js";
 import { getBusinessDatasetForAnalysis } from "./analysisDataService.js";
+import { t } from "../utils/i18n.js";
+import { getCurrentLanguage } from "../utils/requestContext.js";
+import { FRENCH_ALIASES } from "../utils/language.js";
 
 export async function runNaturalLanguageAnalysis(business, question) {
 
@@ -10,7 +13,7 @@ export async function runNaturalLanguageAnalysis(business, question) {
 
     const schemaDescription = buildSchemaDescription();
 
-    const sqlPrompt = `Tu es un assistant qui traduit une question en français, posée par un commerçant, en une requête SQL.
+    const sqlPrompt = `Tu es un assistant qui traduit une question posée par un commerçant (dans n'importe quelle langue) en une requête SQL.
 Le moteur SQL est alasql (dialecte proche de SQLite). Voici le schéma disponible (données déjà filtrées pour cette entreprise, ${dataset.sales.length} vente(s) sur les 12 derniers mois) :
 
 ${schemaDescription}
@@ -29,13 +32,13 @@ Requête SQL :`;
     const rawSql = await askGemini(sqlPrompt, { temperature: 0 });
 
     if (!rawSql) {
-        return { error: "L'IA n'a pas pu être contactée. Réessayez plus tard." };
+        return { error: t("analysisService.aiUnreachable") };
     }
 
     const sql = sanitizeGeneratedSql(rawSql);
 
     if (!sql) {
-        return { error: "Votre question n'a pas pu être traduite en requête valide. Essayez de la reformuler plus simplement." };
+        return { error: t("analysisService.cannotTranslateQuestion") };
     }
 
     let rows;
@@ -44,12 +47,21 @@ Requête SQL :`;
         rows = alasql(sql);
     } catch (err) {
         console.log("❌ Erreur exécution SQL généré :", err.message, "\nSQL :", sql);
-        return { error: "La requête générée n'a pas pu être exécutée. Reformulez votre question." };
+        return { error: t("analysisService.sqlExecutionFailed") };
     }
 
     if (!Array.isArray(rows)) {
         rows = [];
     }
+
+    // Le résumé est un contenu généré par l'IA (différent à chaque question) : il n'y a
+    // pas de version "préchargée" possible. On demande donc directement à Gemini de le
+    // rédiger dans la langue courante de l'utilisateur — ce n'est pas une traduction de
+    // l'interface, seulement la langue de rédaction d'un texte de toute façon généré à
+    // la volée à partir des données réelles.
+    const currentLanguage = getCurrentLanguage();
+    const isFrench = FRENCH_ALIASES.includes(String(currentLanguage).toLowerCase());
+    const languageInstruction = isFrench ? "" : `\n\nRédige ta réponse ENTIÈREMENT en ${currentLanguage}.`;
 
     const analysisPrompt = `Voici une question posée par un commerçant : "${question}"
 
@@ -57,10 +69,10 @@ Voici le résultat de la requête SQL exécutée sur ses données (format JSON, 
 ${JSON.stringify(rows).slice(0, 6000)}
 
 Rédige :
-1) Une analyse claire et concise en français (5 à 8 lignes maximum), avec des chiffres concrets tirés du résultat, orientée conseils business si pertinent.
+1) Une analyse claire et concise (5 à 8 lignes maximum), avec des chiffres concrets tirés du résultat, orientée conseils business si pertinent.
 2) Une dernière ligne, sur sa propre ligne, au format JSON strict précédée de "CHART:", décrivant un graphique pertinent pour visualiser ce résultat :
 CHART:{"type":"bar|line|pie|doughnut","labelField":"nom_du_champ_du_resultat","valueField":"nom_du_champ_du_resultat","title":"titre court"}
-Si aucun graphique n'est pertinent (résultat non numérique, une seule valeur, ou trop peu de lignes), réponds exactement : CHART:null`;
+Si aucun graphique n'est pertinent (résultat non numérique, une seule valeur, ou trop peu de lignes), réponds exactement : CHART:null${languageInstruction}`;
 
     const analysisText = await askGemini(analysisPrompt, { temperature: 0.4 });
 
@@ -123,7 +135,7 @@ function sanitizeGeneratedSql(raw) {
 function parseAnalysisResponse(text) {
 
     if (!text) {
-        return { summary: "Analyse indisponible pour le moment.", chartSpec: null };
+        return { summary: t("analysisService.unavailable"), chartSpec: null };
     }
 
     const lines = text.split("\n");

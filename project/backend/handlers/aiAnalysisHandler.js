@@ -1,6 +1,7 @@
 import { sendWhatsAppMessage, sendWhatsAppButtons, sendWhatsAppDocument } from "../services/whatsapp.js";
 import { updateConversation, resetToMenu } from "../services/conversationService.js";
 import { STEPS } from "../utils/steps.js";
+import { t } from "../utils/i18n.js";
 import { startAnalysis } from "./analysisHandler.js";
 import { runNaturalLanguageAnalysis } from "../services/analysisService.js";
 import { generateChartImage } from "../services/chartService.js";
@@ -13,10 +14,10 @@ export async function showAnalysisMenu(phone, business) {
 
     return sendWhatsAppButtons(
         phone,
-        "📊 *Analyse financière*\n\nQue voulez-vous consulter ?",
+        t("analysis.menuTitle"),
         [
-            { id: "analysis_quick", title: "📈 Résumé rapide" },
-            { id: "analysis_ai", title: "🤖 Poser une question" }
+            { id: "analysis_quick", title: t("analysis.quickButton") },
+            { id: "analysis_ai", title: t("analysis.aiButton") }
         ]
     );
 }
@@ -47,10 +48,7 @@ async function handleAnalysisMenuChoice(phone, text, business) {
 
     if (choice === "analysis_ai") {
         await updateConversation(phone, STEPS.ANALYSIS_AI_QUESTION, {});
-        return sendWhatsAppMessage(
-            phone,
-            '🤖 Posez votre question sur vos ventes, votre stock ou vos créances, en français.\n\nEx : "Quel est mon produit le plus vendu ce mois-ci ?", "Quel client me doit le plus d\'argent ?", "Quel jour ai-je fait le plus de chiffre d\'affaires ce trimestre ?"'
-        );
+        return sendWhatsAppMessage(phone, t("analysis.askQuestion"));
     }
 
     await resetToMenu(phone);
@@ -60,7 +58,7 @@ async function handleAnalysisMenuChoice(phone, text, business) {
 async function handleAiQuestion(phone, text, business) {
 
     if (!text || !text.trim()) {
-        return sendWhatsAppMessage(phone, "❌ Merci de poser une question.");
+        return sendWhatsAppMessage(phone, t("analysis.questionRequired"));
     }
 
     return runAiQuestionFlow(phone, business, text.trim());
@@ -86,10 +84,18 @@ export async function startAnalysisFromAi(phone, business, question) {
  * résumé, graphique, rapport PDF) pour une question donnée, indépendamment de
  * l'étape de conversation en cours. Utilisée à la fois par le flow scénarisé
  * classique (ANALYSIS_AI_QUESTION) et par l'interception IA universelle.
+ *
+ * Note : contrairement au reste de l'interface (textes fixes, préchargés), le
+ * résumé produit ici est un contenu généré par l'IA à partir des données de vente —
+ * il n'existe pas de version "préchargée" possible pour un texte différent à chaque
+ * question. On demande donc directement à Gemini de rédiger ce résumé dans la
+ * langue courante de l'utilisateur (voir analysisService.js) — ce n'est pas une
+ * traduction a posteriori de l'interface, seulement la langue de rédaction d'un
+ * contenu de toute façon généré à la volée.
  */
 export async function runAiQuestionFlow(phone, business, question) {
 
-    await sendWhatsAppMessage(phone, "🤖 Analyse en cours, un instant...");
+    await sendWhatsAppMessage(phone, t("analysis.inProgress"));
 
     const analysis = await runNaturalLanguageAnalysis(business, question);
 
@@ -113,15 +119,10 @@ export async function runAiQuestionFlow(phone, business, question) {
 
     await resetToMenu(phone);
 
-    await sendWhatsAppMessage(phone, `📊 *Résultat*\n\n${analysis.summary || "Analyse indisponible."}`);
+    await sendWhatsAppMessage(phone, t("analysis.resultTitle", { summary: analysis.summary || t("analysis.unavailable") }));
 
     if (pdfPath) {
-        await sendWhatsAppDocument(
-            phone,
-            pdfPath,
-            "rapport-analyse.pdf",
-            "📄 Rapport complet (graphique, données détaillées et requête utilisée)."
-        );
+        await sendWhatsAppDocument(phone, pdfPath, "rapport-analyse.pdf", t("analysis.reportCaption"));
     }
 
     return showMainMenu(phone, business);

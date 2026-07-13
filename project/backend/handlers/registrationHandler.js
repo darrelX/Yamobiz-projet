@@ -1,52 +1,107 @@
-import { sendWhatsAppMessage, downloadWhatsAppMedia } from "../services/whatsapp.js";
+import { sendWhatsAppMessage, sendWhatsAppButtons, downloadWhatsAppMedia } from "../services/whatsapp.js";
 import { updateConversation } from "../services/conversationService.js";
 import { createBusiness, updateBusiness } from "../services/businessService.js";
 import { saveBusinessLogo } from "../services/mediaService.js";
 import { updateUser } from "../services/userService.js";
+import { setCurrentLanguage } from "../utils/requestContext.js";
+import { isLanguageSupported } from "../locales/index.js";
+import { t } from "../utils/i18n.js";
 import { STEPS } from "../utils/steps.js";
 import { showMainMenu } from "./menuHandler.js";
 
-const SKIP_WORDS = ["passer", "plus tard", "skip", "non", "aucun"];
+const SKIP_WORDS = ["passer", "plus tard", "skip", "non", "aucun", "later", "no", "none"];
+
+/**
+ * Boutons de choix de langue. Body volontairement bilingue en dur (pas via t()) :
+ * à ce stade précis, on ne connaît pas encore la langue de la personne — c'est
+ * justement ce qu'on lui demande.
+ */
+function sendLanguageChoice(phone) {
+    return sendWhatsAppButtons(
+        phone,
+        "🌍 Bienvenue sur Yamobiz ! / Welcome to Yamobiz!\n\nChoisissez votre langue / Choose your language :",
+        [
+            { id: "lang_fr", title: "🇫🇷 Français" },
+            { id: "lang_en", title: "🇬🇧 English" }
+        ],
+        null,
+        { skipMenuFooter: true }
+    );
+}
 
 export async function handleRegistration(phone, text, conversation, user, message) {
 
     switch (conversation.step) {
 
+        case STEPS.START: {
+
+            // Premier contact : quel que soit le tout premier message envoyé (même
+            // "bonjour" ou une phrase complète), on ne le traite JAMAIS comme une
+            // donnée. On envoie directement le choix de langue — la toute première
+            // question de l'inscription — et on n'attend une réponse qu'à partir du
+            // PROCHAIN message.
+            await updateConversation(phone, STEPS.LANGUAGE, {});
+
+            return sendLanguageChoice(phone);
+        }
+
+        case STEPS.LANGUAGE: {
+
+            const choice = (text || "").trim().toLowerCase();
+
+            let language = null;
+
+            if (choice === "lang_fr" || choice.includes("fran")) {
+                language = "fr";
+            } else if (choice === "lang_en" || choice.includes("english") || choice.includes("anglais")) {
+                language = "en";
+            }
+
+            if (!language || !isLanguageSupported(language)) {
+                return sendLanguageChoice(phone);
+            }
+
+            await updateUser(user.id, { language });
+
+            // La langue vient d'être choisie : on met à jour le contexte de CETTE
+            // requête pour que le prochain message (juste en dessous) soit déjà
+            // envoyé dans la nouvelle langue, sans attendre le tour suivant.
+            setCurrentLanguage(language);
+
+            await updateConversation(phone, STEPS.NAME, {});
+
+            return sendWhatsAppMessage(phone, t("registration.welcomeAskName"));
+        }
+
         case STEPS.NAME: {
 
             if (!text || !text.trim()) {
-                return sendWhatsAppMessage(phone, "❌ Merci d'indiquer votre nom pour continuer.");
+                return sendWhatsAppMessage(phone, t("registration.nameRequired"));
             }
 
             await updateUser(user.id, { name: text.trim() });
 
             await updateConversation(phone, STEPS.BUSINESS_NAME, {});
 
-            return sendWhatsAppMessage(
-                phone,
-                `Enchanté, ${text.trim()} 👋\n\nQuel est le nom de votre entreprise ?`
-            );
+            return sendWhatsAppMessage(phone, t("registration.greetingAskBusiness", { name: text.trim() }));
         }
 
         case STEPS.BUSINESS_NAME:
 
             if (!text || !text.trim()) {
-                return sendWhatsAppMessage(phone, "❌ Merci d'indiquer le nom de votre entreprise.");
+                return sendWhatsAppMessage(phone, t("registration.businessNameRequired"));
             }
 
             await updateConversation(phone, STEPS.CITY, {
                 businessName: text.trim()
             });
 
-            return sendWhatsAppMessage(
-                phone,
-                "Super 👍\n\nDans quelle ville se trouve votre entreprise ?"
-            );
+            return sendWhatsAppMessage(phone, t("registration.askCity"));
 
         case STEPS.CITY:
 
             if (!text || !text.trim()) {
-                return sendWhatsAppMessage(phone, "❌ Merci d'indiquer une ville.");
+                return sendWhatsAppMessage(phone, t("registration.cityRequired"));
             }
 
             await updateConversation(phone, STEPS.LOGO, {
@@ -54,10 +109,7 @@ export async function handleRegistration(phone, text, conversation, user, messag
                 city: text.trim()
             });
 
-            return sendWhatsAppMessage(
-                phone,
-                '📷 Presque fini ! Envoyez la photo du logo de votre entreprise, ou écrivez "passer" pour continuer sans logo pour le moment.'
-            );
+            return sendWhatsAppMessage(phone, t("registration.askLogo"));
 
         case STEPS.LOGO:
             return handleLogoStep(phone, text, conversation, user, message);
@@ -66,18 +118,12 @@ export async function handleRegistration(phone, text, conversation, user, messag
 
             if (user.name) {
                 await updateConversation(phone, STEPS.BUSINESS_NAME, {});
-                return sendWhatsAppMessage(
-                    phone,
-                    `Rebonjour ${user.name} 👋\n\nQuel est le nom de votre (nouvelle) entreprise ?`
-                );
+                return sendWhatsAppMessage(phone, t("registration.returningGreeting", { name: user.name }));
             }
 
-            await updateConversation(phone, STEPS.NAME, {});
+            await updateConversation(phone, STEPS.LANGUAGE, {});
 
-            return sendWhatsAppMessage(
-                phone,
-                "Bienvenue sur Yamobiz 👋\n\nPour commencer, quel est votre nom ?"
-            );
+            return sendLanguageChoice(phone);
     }
 }
 
@@ -106,10 +152,7 @@ async function handleLogoStep(phone, text, conversation, user, message) {
             }
 
         } else {
-            return sendWhatsAppMessage(
-                phone,
-                '📷 Merci d\'envoyer directement la photo de votre logo, ou écrivez "passer" pour continuer sans logo pour le moment.'
-            );
+            return sendWhatsAppMessage(phone, t("registration.logoRequired"));
         }
     }
 
@@ -121,10 +164,7 @@ async function handleLogoStep(phone, text, conversation, user, message) {
     });
 
     if (!business) {
-        return sendWhatsAppMessage(
-            phone,
-            "❌ Impossible de créer votre entreprise. Veuillez réessayer."
-        );
+        return sendWhatsAppMessage(phone, t("registration.businessCreateError"));
     }
 
     let finalBusiness = business;
@@ -138,13 +178,11 @@ async function handleLogoStep(phone, text, conversation, user, message) {
     await updateUser(user.id, { active_business_id: business.id });
     await updateConversation(phone, STEPS.MENU, {});
 
-    const logoNote = logoBuffer
-        ? ""
-        : '\n\n_Vous pourrez ajouter votre logo plus tard depuis "🏢 Mon entreprise"._';
+    const logoNote = logoBuffer ? "" : t("registration.logoNote");
 
     await sendWhatsAppMessage(
         phone,
-        `🎉 Félicitations !\n\nVotre entreprise *${finalBusiness.name}* a été créée avec succès.${logoNote}\n\nBienvenue sur Yamobiz 🚀\n\n_Astuce : depuis le menu, vous pourrez à tout moment modifier votre profil, votre entreprise, votre stock, vos commandes, ajouter d'autres entreprises, ou supprimer votre compte._`
+        t("registration.successCreated", { businessName: finalBusiness.name, logoNote })
     );
 
     return showMainMenu(phone, finalBusiness);

@@ -23,7 +23,7 @@ export async function createConversation(phone) {
         .from("conversations")
         .insert({
             phone,
-            step: STEPS.NAME,
+            step: STEPS.START,
             data: {}
         })
         .select()
@@ -108,7 +108,7 @@ export async function resetConversation(phone) {
     const { data, error } = await supabase
         .from("conversations")
         .update({
-            step: STEPS.NAME,
+            step: STEPS.START,
             data: {},
             updated_at: new Date()
         })

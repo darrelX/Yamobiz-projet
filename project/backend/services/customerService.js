@@ -66,6 +66,26 @@ export async function getOrCreateCustomer(businessId, name, phone = null) {
 }
 
 /**
+ * Met à jour un client (nom, téléphone).
+ */
+export async function updateCustomer(id, values) {
+
+    const { data, error } = await supabase
+        .from("customers")
+        .update(values)
+        .eq("id", id)
+        .select()
+        .single();
+
+    if (error) {
+        console.log("❌ Erreur mise à jour client :", error);
+        return null;
+    }
+
+    return data;
+}
+
+/**
  * Supprime un client précis par id (utilisé par la suppression en bloc).
  */
 export async function deleteCustomerById(id) {

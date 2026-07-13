@@ -2,6 +2,7 @@ import { sendWhatsAppMessage } from "../services/whatsapp.js";
 import { getSalesBetween, getTopProducts } from "../services/saleService.js";
 import { getTotalOutstandingDebt } from "../services/debtService.js";
 import { formatFCFA } from "../utils/format.js";
+import { t } from "../utils/i18n.js";
 import { resetToMenu } from "../services/conversationService.js";
 import { showMainMenu } from "./menuHandler.js";
 
@@ -28,26 +29,20 @@ export async function startAnalysis(phone, business) {
     const topProducts = await getTopProducts(monthSales.map(s => s.id), 3);
 
     const topProductsText = topProducts.length
-        ? topProducts.map((p, i) => `${i + 1}. ${p.name} (${p.quantity} vendu(s))`).join("\n")
-        : "Aucune vente ce mois-ci.";
+        ? topProducts.map((p, i) => `${i + 1}. ${p.name} (${t("analysis.soldCount", { count: p.quantity })})`).join("\n")
+        : t("analysis.noSalesThisMonth");
 
-    const message =
-`📊 *Analyse — ${business.name}*
-
-*Aujourd'hui*
-Ventes : ${todaySales.length} — Total : ${formatFCFA(todayTotal)}
-
-*7 derniers jours*
-Ventes : ${weekSales.length} — Total : ${formatFCFA(weekTotal)}
-
-*Ce mois-ci*
-Ventes : ${monthSales.length} — Total : ${formatFCFA(monthTotal)}
-
-*Top produits du mois*
-${topProductsText}
-
-*Créances en cours*
-${formatFCFA(outstandingDebt)}`;
+    const message = t("analysis.quickSummary", {
+        businessName: business.name,
+        todayCount: todaySales.length,
+        todayTotal: formatFCFA(todayTotal),
+        weekCount: weekSales.length,
+        weekTotal: formatFCFA(weekTotal),
+        monthCount: monthSales.length,
+        monthTotal: formatFCFA(monthTotal),
+        topProducts: topProductsText,
+        outstandingDebt: formatFCFA(outstandingDebt)
+    });
 
     await resetToMenu(phone);
     await sendWhatsAppMessage(phone, message);

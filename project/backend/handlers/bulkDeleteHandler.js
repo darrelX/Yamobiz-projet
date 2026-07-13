@@ -7,6 +7,7 @@ import { deleteDebtBySaleId } from "../services/debtService.js";
 import { matchProductByName, matchCustomerByName } from "../utils/productMatcher.js";
 import { STEPS } from "../utils/steps.js";
 import { parseYesNo } from "../utils/format.js";
+import { t } from "../utils/i18n.js";
 import { showMainMenu } from "./menuHandler.js";
 
 /**
@@ -75,7 +76,9 @@ export async function startBulkDelete(phone, business, entityType, aiItems, cont
         await resetToMenu(phone);
         await sendWhatsAppMessage(
             phone,
-            `❌ Je n'ai identifié aucun élément valide à supprimer${unresolved.length ? ` (non reconnu : ${unresolved.join(", ")})` : ""}.`
+            unresolved.length
+                ? t("bulkDelete.noneFoundWithList", { list: unresolved.join(", ") })
+                : t("bulkDelete.noneFound")
         );
         return showMainMenu(phone, business);
     }
@@ -85,13 +88,13 @@ export async function startBulkDelete(phone, business, entityType, aiItems, cont
     const label = entityLabel(entityType);
     const lines = resolved.map((r, i) => `${i + 1}. ${r.label}`);
 
-    let message = `🗑️ *Suppression en bloc — ${label}*\n\n${lines.join("\n")}`;
+    let message = t("bulkDelete.reviewTitle", { label, list: lines.join("\n") });
 
     if (unresolved.length) {
-        message += `\n\n❓ Non reconnu(s) : ${unresolved.join(", ")}`;
+        message += `\n\n${t("bulkDelete.unresolvedPrefix", { list: unresolved.join(", ") })}`;
     }
 
-    message += `\n\n⚠️ Cette action est irréversible. Confirmez-vous la suppression de ces ${resolved.length} élément(s) ? (oui / non)`;
+    message += `\n\n${t("bulkDelete.confirmQuestion", { count: resolved.length })}`;
 
     return sendWhatsAppMessage(phone, message);
 }
@@ -101,12 +104,12 @@ async function handleBulkDeleteConfirm(phone, text, conversation, business) {
     const answer = parseYesNo(text);
 
     if (answer === null) {
-        return sendWhatsAppMessage(phone, "Répondez par *oui* ou *non*.");
+        return sendWhatsAppMessage(phone, t("common.yesNoPrompt"));
     }
 
     if (!answer) {
         await resetToMenu(phone);
-        await sendWhatsAppMessage(phone, "Suppression annulée.");
+        await sendWhatsAppMessage(phone, t("bulkDelete.cancelled"));
         return showMainMenu(phone, business);
     }
 
@@ -147,19 +150,19 @@ async function handleBulkDeleteConfirm(phone, text, conversation, business) {
 
     await resetToMenu(phone);
 
-    const stockNote = entityType === "sales" ? " Le stock concerné a été réajusté." : "";
+    const stockNote = entityType === "sales" ? ` ${t("bulkDelete.stockAdjustedNote")}` : "";
 
     await sendWhatsAppMessage(
         phone,
-        `✅ ${successCount}/${resolved.length} élément(s) supprimé(s) avec succès.${stockNote}`
+        `${t("bulkDelete.done", { success: successCount, total: resolved.length })}${stockNote}`
     );
 
     return showMainMenu(phone, business);
 }
 
 function entityLabel(entityType) {
-    if (entityType === "products") return "Produits";
-    if (entityType === "customers") return "Clients";
-    if (entityType === "sales") return "Ventes";
-    return "Éléments";
+    if (entityType === "products") return t("bulkDelete.entityProducts");
+    if (entityType === "customers") return t("bulkDelete.entityCustomers");
+    if (entityType === "sales") return t("bulkDelete.entitySales");
+    return t("bulkDelete.entityGeneric");
 }

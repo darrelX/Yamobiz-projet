@@ -2,6 +2,7 @@ import PDFDocument from "pdfkit";
 import fs from "fs";
 import path from "path";
 import { formatDateTime } from "../utils/format.js";
+import { t } from "../utils/i18n.js";
 import { drawYamobizBadge } from "./pdfService.js";
 
 const REPORTS_DIR = path.resolve("storage/reports");
@@ -35,25 +36,25 @@ export async function generateAnalysisReportPdf(business, analysis, chartBuffer)
 
         doc.fontSize(18).fillColor("#000").text(business.name, headerX, 45);
         doc.fontSize(9).fillColor("#555").text(
-            `Rapport d'analyse généré le ${formatDateTime(new Date())}`,
+            t("report.generatedOn", { date: formatDateTime(new Date()) }),
             headerX,
             doc.y
         );
 
         doc.moveDown(3);
 
-        doc.fontSize(13).fillColor("#000").text("Question posée", { underline: true });
+        doc.fontSize(13).fillColor("#000").text(t("report.questionAsked"), { underline: true });
         doc.moveDown(0.3);
         doc.fontSize(11).fillColor("#333").text(analysis.question);
 
         doc.moveDown();
-        doc.fontSize(13).fillColor("#000").text("Analyse", { underline: true });
+        doc.fontSize(13).fillColor("#000").text(t("report.analysisTitle"), { underline: true });
         doc.moveDown(0.3);
         doc.fontSize(11).fillColor("#333").text(analysis.summary || "—");
 
         if (chartBuffer) {
             doc.addPage();
-            doc.fontSize(13).fillColor("#000").text("Graphique", { underline: true });
+            doc.fontSize(13).fillColor("#000").text(t("report.chartTitle"), { underline: true });
             doc.moveDown(0.5);
             try {
                 doc.image(chartBuffer, { fit: [495, 350], align: "center" });
@@ -64,21 +65,18 @@ export async function generateAnalysisReportPdf(business, analysis, chartBuffer)
 
         if (analysis.rows?.length) {
             doc.addPage();
-            doc.fontSize(13).fillColor("#000").text("Données détaillées", { underline: true });
+            doc.fontSize(13).fillColor("#000").text(t("report.detailedDataTitle"), { underline: true });
             doc.moveDown(0.5);
             renderTable(doc, analysis.rows);
         }
 
         doc.addPage();
-        doc.fontSize(10).fillColor("#000").text("Requête SQL générée", { underline: true });
+        doc.fontSize(10).fillColor("#000").text(t("report.sqlTitle"), { underline: true });
         doc.moveDown(0.3);
         doc.fontSize(8).fillColor("#555").font("Courier").text(analysis.sql || "-", { width: 495 });
         doc.font("Helvetica");
         doc.moveDown();
-        doc.fontSize(8).fillColor("#999").text(
-            "Cette requête a été exécutée uniquement sur une copie temporaire, en mémoire, des données de votre entreprise — jamais directement sur la base de production.",
-            { width: 495 }
-        );
+        doc.fontSize(8).fillColor("#999").text(t("report.sqlDisclaimer"), { width: 495 });
 
         drawYamobizBadge(doc);
 
@@ -127,6 +125,6 @@ function renderTable(doc, rows) {
 
     if (rows.length > 40) {
         doc.moveDown();
-        doc.fontSize(8).fillColor("#999").text(`... et ${rows.length - 40} ligne(s) supplémentaire(s) non affichée(s).`);
+        doc.fontSize(8).fillColor("#999").text(t("report.moreRows", { count: rows.length - 40 }));
     }
 }

@@ -13,7 +13,30 @@ import { logEvent } from "../services/loggerService.js";
 import { matchProductByName } from "../utils/productMatcher.js";
 import { STEPS } from "../utils/steps.js";
 import { parsePositiveNumber, parseYesNo, formatFCFA, formatDateTime } from "../utils/format.js";
+import { t } from "../utils/i18n.js";
 import { buildStockListMessage, showMainMenu } from "./menuHandler.js";
+
+/**
+ * Point d'entrée "quels produits sont presque épuisés" détecté par l'IA depuis
+ * n'importe quelle rubrique. Seuil par défaut de 5 unités si non précisé.
+ */
+export async function showLowStockFromAi(phone, business, threshold) {
+
+    const limit = Number(threshold) > 0 ? Number(threshold) : 5;
+    const products = await getProductsByBusiness(business.id);
+    const low = products.filter(p => Number(p.stock_quantity) <= limit);
+
+    if (!low.length) {
+        await sendWhatsAppMessage(phone, t("stock.noneLow", { limit }));
+        return showMainMenu(phone, business);
+    }
+
+    const lines = low.map(p => `• ${p.name} : ${p.stock_quantity} ${p.unit} ${t("stock.remainingSuffix")}`);
+
+    await sendWhatsAppMessage(phone, `${t("stock.lowStockTitle", { limit })}\n\n${lines.join("\n")}`);
+
+    return showMainMenu(phone, business);
+}
 
 export async function showStockMenu(phone, business) {
 
@@ -23,14 +46,9 @@ export async function showStockMenu(phone, business) {
         productIds: products.map(p => p.id)
     });
 
-    const list = products.length
-        ? buildStockListMessage(products)
-        : "Aucun produit enregistré pour le moment.";
+    const list = products.length ? buildStockListMessage(products) : t("stock.noProducts");
 
-    return sendWhatsAppMessage(
-        phone,
-        `📦 *Votre stock*\n\n${list}\n\n🅰️ Ajouter un produit  (répondez *A*)\nEntrez le *numéro* d'un produit pour le gérer (modifier, ajuster le stock, historique, supprimer)\n0️⃣ Retour au menu\n\n_Astuce : vous pouvez aussi m'écrire directement, ex. "ajoute 10 riz à 500 et 20 sucre à 300"._`
-    );
+    return sendWhatsAppMessage(phone, t("stock.menuBody", { list }));
 }
 
 export async function handleStock(phone, text, conversation, business) {
@@ -106,7 +124,7 @@ export async function startBulkAddFromAiItems(phone, business, aiItems, products
         } else if (item.price) {
             toCreate.push({ name: item.product_query.trim(), price: Number(item.price), quantity });
         } else {
-            unresolved.push(`${item.product_query} (prix manquant pour un nouveau produit)`);
+            unresolved.push(t("stock.missingPriceSuffix", { query: item.product_query }));
         }
     }
 
@@ -114,7 +132,7 @@ export async function startBulkAddFromAiItems(phone, business, aiItems, products
         await resetToMenu(phone);
         await sendWhatsAppMessage(
             phone,
-            `🤖 Je n'ai pas pu traiter votre demande d'ajout de stock.${unresolved.length ? `\n\n❓ ${unresolved.join(", ")}` : ""}`
+            `${t("stock.bulkAddFailed")}${unresolved.length ? `\n\n${t("stock.unresolvedPrefix", { list: unresolved.join(", ") })}` : ""}`
         );
         return showMainMenu(phone, business);
     }
@@ -129,20 +147,20 @@ function buildBulkAddReviewMessage(toCreate, toRestock, unresolved) {
     const lines = [];
 
     for (const p of toRestock) {
-        lines.push(`• ${p.name} : +${p.quantity} ${p.unit} (réapprovisionnement)`);
+        lines.push(`• ${p.name} : +${p.quantity} ${p.unit} (${t("stock.restockSuffix")})`);
     }
 
     for (const p of toCreate) {
-        lines.push(`• ${p.name} (nouveau) : ${p.quantity} unité(s) à ${formatFCFA(p.price)}`);
+        lines.push(`• ${t("stock.newProductLine", { name: p.name, quantity: p.quantity, price: formatFCFA(p.price) })}`);
     }
 
-    let message = `🤖 *Ajout de stock — récapitulatif*\n\n${lines.join("\n")}`;
+    let message = `${t("stock.bulkAddReviewTitle")}\n\n${lines.join("\n")}`;
 
     if (unresolved.length) {
-        message += `\n\n❓ Non traité(s) : ${unresolved.join(", ")}`;
+        message += `\n\n${t("stock.unresolvedPrefix", { list: unresolved.join(", ") })}`;
     }
 
-    message += "\n\nConfirmez-vous cet ajout ? (oui / non)";
+    message += `\n\n${t("stock.bulkAddConfirmQuestion")}`;
 
     return message;
 }
@@ -160,7 +178,7 @@ export async function startEditProductFromAi(phone, business, item, products = n
     const product = matchProductByName(productList, item.product_query);
 
     if (!product) {
-        await sendWhatsAppMessage(phone, `❌ Je n'ai pas trouvé de produit correspondant à "${item.product_query}".`);
+        await sendWhatsAppMessage(phone, t("stock.productNotFound", { query: item.product_query }));
         return showStockMenu(phone, business);
     }
 
@@ -170,12 +188,12 @@ export async function startEditProductFromAi(phone, business, item, products = n
 
         if (price) {
             const updated = await updateProduct(product.id, { price });
-            await sendWhatsAppMessage(phone, `✅ Prix mis à jour : *${updated.name}* — ${formatFCFA(updated.price)}`);
+            await sendWhatsAppMessage(phone, t("stock.priceUpdated", { name: updated.name, price: formatFCFA(updated.price) }));
             return showProductActions(phone, updated);
         }
 
         await updateConversation(phone, STEPS.STOCK_EDIT_PRICE, { selectedProductId: product.id });
-        return sendWhatsAppMessage(phone, `Nouveau prix pour "${product.name}" (en FCFA) ?`);
+        return sendWhatsAppMessage(phone, t("stock.askNewPrice", { name: product.name }));
     }
 
     // field === "name" (ou non précisé)
@@ -183,12 +201,12 @@ export async function startEditProductFromAi(phone, business, item, products = n
 
     if (name) {
         const updated = await updateProduct(product.id, { name });
-        await sendWhatsAppMessage(phone, `✅ Nom mis à jour : *${updated.name}*`);
+        await sendWhatsAppMessage(phone, t("stock.nameUpdated", { name: updated.name }));
         return showProductActions(phone, updated);
     }
 
     await updateConversation(phone, STEPS.STOCK_EDIT_NAME, { selectedProductId: product.id });
-    return sendWhatsAppMessage(phone, `Nouveau nom pour "${product.name}" ?`);
+    return sendWhatsAppMessage(phone, t("stock.askNewName", { name: product.name }));
 }
 
 async function handleBulkAddConfirm(phone, text, conversation, business) {
@@ -196,12 +214,12 @@ async function handleBulkAddConfirm(phone, text, conversation, business) {
     const answer = parseYesNo(text);
 
     if (answer === null) {
-        return sendWhatsAppMessage(phone, "Répondez par *oui* ou *non*.");
+        return sendWhatsAppMessage(phone, t("common.yesNoPrompt"));
     }
 
     if (!answer) {
         await resetToMenu(phone);
-        await sendWhatsAppMessage(phone, "Ajout de stock annulé.");
+        await sendWhatsAppMessage(phone, t("stock.bulkAddCancelled"));
         return showMainMenu(phone, business);
     }
 
@@ -230,7 +248,7 @@ async function handleBulkAddConfirm(phone, text, conversation, business) {
 
     await resetToMenu(phone);
 
-    await sendWhatsAppMessage(phone, `✅ Stock mis à jour pour ${count} produit(s).`);
+    await sendWhatsAppMessage(phone, t("stock.bulkAddDone", { count }));
 
     return showMainMenu(phone, business);
 }
@@ -239,9 +257,9 @@ async function handleStockMenuChoice(phone, text, conversation, business) {
 
     const choice = (text || "").trim().toLowerCase();
 
-    if (choice === "A" || choice === "a") {
+    if (choice === "a" || choice === "A") {
         await updateConversation(phone, STEPS.STOCK_ADD_NAME, {});
-        return sendWhatsAppMessage(phone, "Quel est le nom du nouveau produit ?");
+        return sendWhatsAppMessage(phone, t("stock.askNewProductName"));
     }
 
     if (choice === "0") {
@@ -253,16 +271,13 @@ async function handleStockMenuChoice(phone, text, conversation, business) {
     const productIds = conversation.data.productIds || [];
 
     if (isNaN(index) || !productIds[index]) {
-        return sendWhatsAppMessage(
-            phone,
-            "❌ Choix invalide. Entrez le numéro d'un produit, 1️⃣ pour en ajouter un, ou 0️⃣ pour revenir."
-        );
+        return sendWhatsAppMessage(phone, t("stock.menuInvalidChoice"));
     }
 
     const product = await getProductById(productIds[index], business.id);
 
     if (!product) {
-        return sendWhatsAppMessage(phone, "❌ Produit introuvable.");
+        return sendWhatsAppMessage(phone, t("stock.productNotFoundGeneric"));
     }
 
     return showProductActions(phone, product);
@@ -275,22 +290,22 @@ export async function showProductActions(phone, product) {
     });
 
     const sections = [{
-        title: "Actions",
+        title: t("stock.actionsTitle"),
         rows: [
-            { id: "edit_name", title: "✏️ Modifier le nom" },
-            { id: "edit_price", title: "💲 Modifier le prix" },
-            { id: "add_stock", title: "➕ Ajouter des unités" },
-            { id: "remove_stock", title: "➖ Retirer des unités" },
-            { id: "history", title: "📜 Historique des ventes" },
-            { id: "delete", title: "🗑️ Supprimer le produit" },
-            { id: "back", title: "⬅️ Retour au stock" }
+            { id: "edit_name", title: t("stock.actionEditName") },
+            { id: "edit_price", title: t("stock.actionEditPrice") },
+            { id: "add_stock", title: t("stock.actionAddUnits") },
+            { id: "remove_stock", title: t("stock.actionRemoveUnits") },
+            { id: "history", title: t("stock.actionHistory") },
+            { id: "delete", title: t("stock.actionDelete") },
+            { id: "back", title: t("stock.actionBack") }
         ]
     }];
 
     return sendWhatsAppList(
         phone,
-        `📦 *${product.name}*\n\nPrix : ${formatFCFA(product.price)}\nStock : ${product.stock_quantity} ${product.unit}`,
-        "Choisir",
+        t("stock.productDetailBody", { name: product.name, price: formatFCFA(product.price), stock: product.stock_quantity, unit: product.unit }),
+        t("common.chooseButton"),
         sections
     );
 }
@@ -304,7 +319,7 @@ async function handleProductActions(phone, text, conversation, business) {
 
     if (!product) {
         await resetToMenu(phone);
-        await sendWhatsAppMessage(phone, "❌ Ce produit n'existe plus.");
+        await sendWhatsAppMessage(phone, t("stock.productGone"));
         return showMainMenu(phone, business);
     }
 
@@ -312,32 +327,26 @@ async function handleProductActions(phone, text, conversation, business) {
 
         case "edit_name":
             await updateConversation(phone, STEPS.STOCK_EDIT_NAME, { selectedProductId: productId });
-            return sendWhatsAppMessage(phone, `Nouveau nom pour "${product.name}" ?`);
+            return sendWhatsAppMessage(phone, t("stock.askNewName", { name: product.name }));
 
         case "edit_price":
             await updateConversation(phone, STEPS.STOCK_EDIT_PRICE, { selectedProductId: productId });
-            return sendWhatsAppMessage(phone, `Nouveau prix pour "${product.name}" (en FCFA) ?`);
+            return sendWhatsAppMessage(phone, t("stock.askNewPrice", { name: product.name }));
 
         case "add_stock":
             await updateConversation(phone, STEPS.STOCK_ADJUST_QTY, { selectedProductId: productId, adjustSign: 1 });
-            return sendWhatsAppMessage(phone, `Combien d'unités ajouter à "${product.name}" ?`);
+            return sendWhatsAppMessage(phone, t("stock.askAddUnits", { name: product.name }));
 
         case "remove_stock":
             await updateConversation(phone, STEPS.STOCK_ADJUST_QTY, { selectedProductId: productId, adjustSign: -1 });
-            return sendWhatsAppMessage(
-                phone,
-                `Combien d'unités retirer de "${product.name}" ? (stock actuel : ${product.stock_quantity})`
-            );
+            return sendWhatsAppMessage(phone, t("stock.askRemoveUnits", { name: product.name, stock: product.stock_quantity }));
 
         case "history":
             return handleHistory(phone, product);
 
         case "delete":
             await updateConversation(phone, STEPS.STOCK_DELETE_CONFIRM, { selectedProductId: productId });
-            return sendWhatsAppMessage(
-                phone,
-                `⚠️ Confirmez-vous la suppression définitive de "${product.name}" ? (oui / non)`
-            );
+            return sendWhatsAppMessage(phone, t("stock.deleteConfirmQuestion", { name: product.name }));
 
         case "back":
         default:
@@ -350,16 +359,16 @@ async function handleHistory(phone, product) {
     const history = await getSalesHistoryForProduct(product.id, 15);
 
     if (!history.length) {
-        await sendWhatsAppMessage(phone, `📜 Aucune vente enregistrée pour "${product.name}" pour le moment.`);
+        await sendWhatsAppMessage(phone, t("stock.noHistory", { name: product.name }));
         return showProductActions(phone, product);
     }
 
     const lines = history.map(h => {
         const date = h.sales?.created_at ? formatDateTime(h.sales.created_at) : "-";
-        return `• ${date} — ${h.quantity} ${product.unit} vendu(s) — ${formatFCFA(h.subtotal)} (${h.sales?.invoice_number || ""})`;
+        return `• ${date} — ${h.quantity} ${product.unit} ${t("stock.soldSuffix")} — ${formatFCFA(h.subtotal)} (${h.sales?.invoice_number || ""})`;
     });
 
-    await sendWhatsAppMessage(phone, `📜 *Historique des ventes — ${product.name}*\n\n${lines.join("\n")}`);
+    await sendWhatsAppMessage(phone, t("stock.historyTitle", { name: product.name, list: lines.join("\n") }));
 
     return showProductActions(phone, product);
 }
@@ -367,18 +376,18 @@ async function handleHistory(phone, product) {
 async function handleEditName(phone, text, conversation, business) {
 
     if (!text || !text.trim()) {
-        return sendWhatsAppMessage(phone, "❌ Merci d'indiquer un nom valide.");
+        return sendWhatsAppMessage(phone, t("stock.nameRequired"));
     }
 
     const updated = await updateProduct(conversation.data.selectedProductId, { name: text.trim() });
 
     if (!updated) {
         await resetToMenu(phone);
-        await sendWhatsAppMessage(phone, "❌ Erreur lors de la mise à jour.");
+        await sendWhatsAppMessage(phone, t("stock.updateError"));
         return showMainMenu(phone, business);
     }
 
-    await sendWhatsAppMessage(phone, `✅ Nom mis à jour : *${updated.name}*`);
+    await sendWhatsAppMessage(phone, t("stock.nameUpdated", { name: updated.name }));
     return showProductActions(phone, updated);
 }
 
@@ -387,18 +396,18 @@ async function handleEditPrice(phone, text, conversation, business) {
     const price = parsePositiveNumber(text);
 
     if (!price) {
-        return sendWhatsAppMessage(phone, "❌ Merci d'indiquer un prix valide (nombre positif).");
+        return sendWhatsAppMessage(phone, t("stock.priceRequired"));
     }
 
     const updated = await updateProduct(conversation.data.selectedProductId, { price });
 
     if (!updated) {
         await resetToMenu(phone);
-        await sendWhatsAppMessage(phone, "❌ Erreur lors de la mise à jour.");
+        await sendWhatsAppMessage(phone, t("stock.updateError"));
         return showMainMenu(phone, business);
     }
 
-    await sendWhatsAppMessage(phone, `✅ Prix mis à jour : ${formatFCFA(updated.price)}`);
+    await sendWhatsAppMessage(phone, t("stock.priceUpdated", { name: updated.name, price: formatFCFA(updated.price) }));
     return showProductActions(phone, updated);
 }
 
@@ -407,7 +416,7 @@ async function handleAdjustQty(phone, text, conversation, business) {
     const qty = parsePositiveNumber(text);
 
     if (!qty) {
-        return sendWhatsAppMessage(phone, "❌ Merci d'indiquer une quantité valide (nombre positif).");
+        return sendWhatsAppMessage(phone, t("stock.quantityRequired"));
     }
 
     const { selectedProductId, adjustSign } = conversation.data;
@@ -415,26 +424,22 @@ async function handleAdjustQty(phone, text, conversation, business) {
 
     if (!product) {
         await resetToMenu(phone);
-        await sendWhatsAppMessage(phone, "❌ Produit introuvable.");
+        await sendWhatsAppMessage(phone, t("stock.productNotFoundGeneric"));
         return showMainMenu(phone, business);
     }
 
     if (adjustSign < 0 && qty > Number(product.stock_quantity)) {
-        return sendWhatsAppMessage(
-            phone,
-            `❌ Vous ne pouvez pas retirer plus que le stock actuel (${product.stock_quantity}).`
-        );
+        return sendWhatsAppMessage(phone, t("stock.cannotRemoveMoreThanStock", { stock: product.stock_quantity }));
     }
 
     const updated = await adjustStock(selectedProductId, qty * adjustSign);
 
     if (!updated) {
         await resetToMenu(phone);
-        await sendWhatsAppMessage(phone, "❌ Erreur lors de la mise à jour du stock.");
+        await sendWhatsAppMessage(phone, t("stock.stockUpdateError"));
         return showMainMenu(phone, business);
     }
 
-    const verb = adjustSign > 0 ? "ajoutée(s)" : "retirée(s)";
     const logType = adjustSign > 0 ? "stock_ajout" : "stock_retrait";
     const sign = adjustSign > 0 ? "+" : "-";
 
@@ -444,10 +449,9 @@ async function handleAdjustQty(phone, text, conversation, business) {
         `${updated.name} : ${sign}${qty} ${updated.unit} (nouveau stock : ${updated.stock_quantity})`
     );
 
-    await sendWhatsAppMessage(
-        phone,
-        `✅ ${qty} unité(s) ${verb}. Nouveau stock : ${updated.stock_quantity} ${updated.unit}`
-    );
+    const verbKey = adjustSign > 0 ? "stock.unitsAdded" : "stock.unitsRemoved";
+
+    await sendWhatsAppMessage(phone, t(verbKey, { qty, stock: updated.stock_quantity, unit: updated.unit }));
     return showProductActions(phone, updated);
 }
 
@@ -457,7 +461,7 @@ async function handleDeleteConfirm(phone, text, conversation, business) {
 
     if (!["oui", "o", "yes", "1"].includes(answer)) {
         const product = await getProductById(conversation.data.selectedProductId, business.id);
-        await sendWhatsAppMessage(phone, "Suppression annulée.");
+        await sendWhatsAppMessage(phone, t("stock.deleteCancelled"));
         return product ? showProductActions(phone, product) : showStockMenu(phone, business);
     }
 
@@ -466,18 +470,37 @@ async function handleDeleteConfirm(phone, text, conversation, business) {
     await resetToMenu(phone);
 
     if (!deleted) {
-        await sendWhatsAppMessage(phone, "❌ Erreur lors de la suppression.");
+        await sendWhatsAppMessage(phone, t("stock.deleteError"));
         return showMainMenu(phone, business);
     }
 
-    await sendWhatsAppMessage(phone, "✅ Produit supprimé.");
+    await sendWhatsAppMessage(phone, t("stock.deleted"));
     return showMainMenu(phone, business);
+}
+
+/**
+ * Reconnaît une commande de correction déterministe du type "nom <valeur>" /
+ * "name <valeur>" ou "prix <valeur>" / "price <valeur>" (FR et EN), utilisable à
+ * tout moment pendant l'ajout d'un nouveau produit pour revenir corriger un champ
+ * déjà saisi, sans casser la progression du flow.
+ */
+function matchFieldOverride(text) {
+
+    const trimmed = (text || "").trim();
+
+    let m = trimmed.match(/^(nom|name)\s*:?\s*(.+)$/i);
+    if (m) return { field: "name", value: m[2].trim() };
+
+    m = trimmed.match(/^(prix|price)\s*:?\s*(.+)$/i);
+    if (m) return { field: "price", value: m[2].trim() };
+
+    return null;
 }
 
 async function handleAddName(phone, text, conversation) {
 
     if (!text || !text.trim()) {
-        return sendWhatsAppMessage(phone, "❌ Merci d'indiquer un nom de produit valide.");
+        return sendWhatsAppMessage(phone, t("stock.newProductNameRequired"));
     }
 
     await updateConversation(phone, STEPS.STOCK_ADD_PRICE, {
@@ -485,15 +508,22 @@ async function handleAddName(phone, text, conversation) {
         productName: text.trim()
     });
 
-    return sendWhatsAppMessage(phone, `Quel est le prix unitaire de "${text.trim()}" (en FCFA) ?`);
+    return sendWhatsAppMessage(phone, t("stock.askUnitPrice", { name: text.trim() }));
 }
 
 async function handleAddPrice(phone, text, conversation) {
 
+    const override = matchFieldOverride(text);
+
+    if (override?.field === "name") {
+        await updateConversation(phone, STEPS.STOCK_ADD_PRICE, { ...conversation.data, productName: override.value });
+        return sendWhatsAppMessage(phone, t("stock.nameUpdatedAskPrice", { name: override.value }));
+    }
+
     const price = parsePositiveNumber(text);
 
     if (!price) {
-        return sendWhatsAppMessage(phone, "❌ Merci d'indiquer un prix valide (nombre positif).");
+        return sendWhatsAppMessage(phone, t("stock.priceRequiredWithHint"));
     }
 
     await updateConversation(phone, STEPS.STOCK_ADD_STOCK, {
@@ -501,15 +531,31 @@ async function handleAddPrice(phone, text, conversation) {
         productPrice: price
     });
 
-    return sendWhatsAppMessage(phone, "Quelle est la quantité initiale en stock ?");
+    return sendWhatsAppMessage(phone, t("stock.askInitialStock"));
 }
 
 async function handleAddStock(phone, text, conversation, business) {
 
+    const override = matchFieldOverride(text);
+
+    if (override?.field === "name") {
+        await updateConversation(phone, STEPS.STOCK_ADD_STOCK, { ...conversation.data, productName: override.value });
+        return sendWhatsAppMessage(phone, t("stock.nameUpdatedAskStock", { name: override.value }));
+    }
+
+    if (override?.field === "price") {
+        const price = parsePositiveNumber(override.value);
+        if (!price) {
+            return sendWhatsAppMessage(phone, t("stock.invalidPrice"));
+        }
+        await updateConversation(phone, STEPS.STOCK_ADD_STOCK, { ...conversation.data, productPrice: price });
+        return sendWhatsAppMessage(phone, t("stock.priceUpdatedAskStock", { price: formatFCFA(price) }));
+    }
+
     const quantity = parsePositiveNumber(text);
 
     if (!quantity) {
-        return sendWhatsAppMessage(phone, "❌ Merci d'indiquer une quantité valide (nombre positif).");
+        return sendWhatsAppMessage(phone, t("stock.quantityRequiredWithHint"));
     }
 
     const { productName, productPrice } = conversation.data;
@@ -522,7 +568,7 @@ async function handleAddStock(phone, text, conversation, business) {
 
     if (!product) {
         await resetToMenu(phone);
-        return sendWhatsAppMessage(phone, "❌ Une erreur est survenue lors de la création du produit.");
+        return sendWhatsAppMessage(phone, t("stock.createError"));
     }
 
     await logEvent(business.id, "stock_ajout", `Nouveau produit : ${product.name} — ${product.stock_quantity} ${product.unit}`);
@@ -531,7 +577,7 @@ async function handleAddStock(phone, text, conversation, business) {
 
     await sendWhatsAppMessage(
         phone,
-        `✅ Produit ajouté : *${product.name}* — ${formatFCFA(product.price)} — stock : ${product.stock_quantity}`
+        t("stock.productCreated", { name: product.name, price: formatFCFA(product.price), stock: product.stock_quantity })
     );
 
     return showMainMenu(phone, business);

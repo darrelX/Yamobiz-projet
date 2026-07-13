@@ -5,6 +5,7 @@ import { incrementStock } from "../services/productService.js";
 import { deleteDebtBySaleId } from "../services/debtService.js";
 import { STEPS } from "../utils/steps.js";
 import { formatFCFA, formatDateTime } from "../utils/format.js";
+import { t } from "../utils/i18n.js";
 import { showMainMenu } from "./menuHandler.js";
 
 export async function showOrderMenu(phone, business) {
@@ -13,7 +14,7 @@ export async function showOrderMenu(phone, business) {
 
     if (!sales.length) {
         await resetToMenu(phone);
-        await sendWhatsAppMessage(phone, "Aucune commande enregistrée pour le moment.");
+        await sendWhatsAppMessage(phone, t("invoice.none"));
         return showMainMenu(phone, business);
     }
 
@@ -25,9 +26,30 @@ export async function showOrderMenu(phone, business) {
         return `${i + 1}. ${s.invoice_number} — ${formatFCFA(s.total_amount)} — ${date}${client}`;
     });
 
+    return sendWhatsAppMessage(phone, t("invoice.listTitle", { list: lines.join("\n") }));
+}
+
+/**
+ * Point d'entrée "annule ma dernière vente" détecté par l'IA depuis n'importe quelle
+ * rubrique. Redirige vers l'écran de confirmation existant (jamais d'exécution
+ * directe pour une action qui réajuste le stock et supprime une créance éventuelle).
+ */
+export async function startCancelLastSaleFromAi(phone, business) {
+
+    const sales = await getRecentSales(business.id, 1);
+
+    if (!sales.length) {
+        await sendWhatsAppMessage(phone, t("invoice.noSaleToCancel"));
+        return showMainMenu(phone, business);
+    }
+
+    const sale = sales[0];
+
+    await updateConversation(phone, STEPS.ORDER_CANCEL_CONFIRM, { selectedSaleId: sale.id });
+
     return sendWhatsAppMessage(
         phone,
-        `📋 *Vos dernières commandes*\n\n${lines.join("\n")}\n\nEntrez le *numéro* d'une commande pour la consulter, ou *0* pour revenir au menu.`
+        t("invoice.cancelLastConfirm", { invoiceNumber: sale.invoice_number, total: formatFCFA(sale.total_amount) })
     );
 }
 
@@ -63,22 +85,29 @@ async function handleOrderSelection(phone, text, conversation, business) {
     const saleIds = conversation.data.saleIds || [];
 
     if (isNaN(index) || !saleIds[index]) {
-        return sendWhatsAppMessage(phone, "❌ Choix invalide. Entrez le numéro d'une commande, ou 0 pour revenir au menu.");
+        return sendWhatsAppMessage(phone, t("invoice.invalidChoice"));
     }
 
     const sale = await getSaleWithItems(saleIds[index]);
 
     if (!sale) {
-        return sendWhatsAppMessage(phone, "❌ Commande introuvable.");
+        return sendWhatsAppMessage(phone, t("invoice.notFound"));
     }
 
     await updateConversation(phone, STEPS.ORDER_ACTIONS, { selectedSaleId: sale.id });
 
     const lines = sale.items.map(i => `• ${i.product_name} x${i.quantity} = ${formatFCFA(i.subtotal)}`);
+    const paymentLabel = sale.payment_type === "credit" ? t("sale.paymentCredit") : t("sale.paymentCash");
 
     return sendWhatsAppMessage(
         phone,
-        `🧾 *Commande ${sale.invoice_number}*\n\nDate exacte : ${formatDateTime(sale.created_at)}\n\n${lines.join("\n")}\n\nTotal : ${formatFCFA(sale.total_amount)}\nPaiement : ${sale.payment_type === "credit" ? "Crédit" : "Comptant"}\n\n1️⃣ Annuler cette commande\n0️⃣ Retour`
+        t("invoice.detailBody", {
+            invoiceNumber: sale.invoice_number,
+            date: formatDateTime(sale.created_at),
+            list: lines.join("\n"),
+            total: formatFCFA(sale.total_amount),
+            payment: paymentLabel
+        })
     );
 }
 
@@ -88,10 +117,7 @@ async function handleOrderAction(phone, text, conversation, business) {
 
     if (choice === "1") {
         await updateConversation(phone, STEPS.ORDER_CANCEL_CONFIRM, conversation.data);
-        return sendWhatsAppMessage(
-            phone,
-            "⚠️ Confirmez-vous l'annulation de cette commande ? Le stock vendu sera réajusté et la créance associée (le cas échéant) supprimée. (oui / non)"
-        );
+        return sendWhatsAppMessage(phone, t("invoice.cancelConfirm"));
     }
 
     await resetToMenu(phone);
@@ -104,7 +130,7 @@ async function handleOrderCancelConfirm(phone, text, conversation, business) {
 
     if (!["oui", "o", "yes", "1"].includes(answer)) {
         await resetToMenu(phone);
-        await sendWhatsAppMessage(phone, "Annulation abandonnée, la commande est conservée.");
+        await sendWhatsAppMessage(phone, t("invoice.cancelAbandoned"));
         return showMainMenu(phone, business);
     }
 
@@ -112,7 +138,7 @@ async function handleOrderCancelConfirm(phone, text, conversation, business) {
 
     if (!sale) {
         await resetToMenu(phone);
-        await sendWhatsAppMessage(phone, "❌ Commande introuvable.");
+        await sendWhatsAppMessage(phone, t("invoice.notFound"));
         return showMainMenu(phone, business);
     }
 
@@ -128,6 +154,6 @@ async function handleOrderCancelConfirm(phone, text, conversation, business) {
 
     await resetToMenu(phone);
 
-    await sendWhatsAppMessage(phone, `✅ Commande ${sale.invoice_number} annulée, le stock a été réajusté.`);
+    await sendWhatsAppMessage(phone, t("invoice.cancelled", { invoiceNumber: sale.invoice_number }));
     return showMainMenu(phone, business);
 }

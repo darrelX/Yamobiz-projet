@@ -98,6 +98,28 @@ export async function getSaleByInvoiceNumber(businessId, invoiceNumber) {
 }
 
 /**
+ * Montant de la caisse : cumul des ventes réglées comptant uniquement (l'argent
+ * réellement encaissé). Les ventes à crédit ne comptent que lorsqu'une créance est
+ * payée — non inclus ici pour rester simple ; voir aussi getTotalRevenue() pour le
+ * chiffre d'affaires total (comptant + crédit confondus).
+ */
+export async function getCashBalance(businessId) {
+
+    const { data, error } = await supabase
+        .from("sales")
+        .select("total_amount")
+        .eq("business_id", businessId)
+        .eq("payment_type", "cash");
+
+    if (error) {
+        console.log("❌ Erreur calcul montant caisse :", error);
+        return 0;
+    }
+
+    return (data || []).reduce((sum, s) => sum + Number(s.total_amount), 0);
+}
+
+/**
  * Calcule le chiffre d'affaires cumulé de l'entreprise, depuis toujours
  * (toutes les ventes, sans limite de période).
  */
@@ -144,7 +166,7 @@ export async function getRecentSales(businessId, limit = 10) {
         .limit(limit);
 
     if (error) {
-        console.log("❌ Erreur récupération commandes :", error);
+        console.log("❌ Erreur récupération factures :", error);
         return [];
     }
 

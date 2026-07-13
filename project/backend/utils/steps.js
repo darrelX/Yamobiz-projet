@@ -6,6 +6,8 @@
 export const STEPS = {
 
     // --- Inscription / identification ---
+    START: "START",   // tout premier contact : n'importe quel message envoie l'accueil, sans jamais être interprété comme donnée
+    LANGUAGE: "LANGUAGE", // choix de la langue de l'application, avant toute autre question
     NAME: "NAME",
     BUSINESS_NAME: "BUSINESS_NAME",
     CITY: "CITY",
@@ -22,6 +24,7 @@ export const STEPS = {
     SALE_CUSTOMER_NAME: "SALE_CUSTOMER_NAME",
     SALE_CONFIRM: "SALE_CONFIRM",
     SALE_AI_REVIEW: "SALE_AI_REVIEW", // récap de ce que l'IA a compris depuis un message libre/vocal
+    SALE_EDIT_QUANTITY: "SALE_EDIT_QUANTITY", // modification d'une ligne du panier avant facture (hors IA)
 
     // --- Stock (CRUD complet + ajout en bloc) ---
     STOCK_MENU: "STOCK_MENU",
@@ -40,7 +43,7 @@ export const STEPS = {
     DEBT_SELECT: "DEBT_SELECT",
     DEBT_AMOUNT: "DEBT_AMOUNT",
 
-    // --- Commandes (consultation / annulation) ---
+    // --- Factures (consultation / annulation) ---
     ORDER_MENU: "ORDER_MENU",
     ORDER_ACTIONS: "ORDER_ACTIONS",
     ORDER_CANCEL_CONFIRM: "ORDER_CANCEL_CONFIRM",
@@ -64,6 +67,7 @@ export const STEPS = {
     // --- Compte utilisateur ---
     ACCOUNT_MENU: "ACCOUNT_MENU",
     ACCOUNT_DELETE_CONFIRM: "ACCOUNT_DELETE_CONFIRM",
+    ACCOUNT_LANGUAGE: "ACCOUNT_LANGUAGE",
 
     // --- Analyse financière (résumé rapide + IA en langage naturel) ---
     ANALYSIS_MENU: "ANALYSIS_MENU",
@@ -75,6 +79,8 @@ export const STEPS = {
 };
 
 export const REGISTRATION_STEPS = [
+    STEPS.START,
+    STEPS.LANGUAGE,
     STEPS.NAME,
     STEPS.BUSINESS_NAME,
     STEPS.CITY,
