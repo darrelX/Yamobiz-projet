@@ -10,6 +10,9 @@ import {
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
+// Même seuil que dans Stock.jsx — products n'a pas de colonne stock_alert.
+const LOW_STOCK_THRESHOLD = 5
+
 function formatFCFA(n) {
   if (!n) return '0 FCFA'
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} M FCFA`
@@ -48,24 +51,27 @@ export default function Dashboard() {
 
   async function loadData() {
     setLoading(true)
-    const [salesRes, creditsRes, productsRes, recentRes] = await Promise.all([
-      supabase.from('sales').select('total, payment_type, created_at').eq('business_id', business.id),
-      supabase.from('credits').select('amount, amount_paid, status').eq('business_id', business.id),
-      supabase.from('products').select('stock_qty, stock_alert, name').eq('business_id', business.id),
-      supabase.from('sales').select('id, total, payment_type, customer_name, created_at').eq('business_id', business.id).order('created_at', { ascending: false }).limit(5),
+    // Schéma réel : sales.total_amount (pas total), pas de sales.customer_name
+    // (client via customer_id -> customers), pas de table `credits` (c'est
+    // `debts`), products.stock_quantity (pas stock_qty/stock_alert).
+    const [salesRes, debtsRes, productsRes, recentRes] = await Promise.all([
+      supabase.from('sales').select('total_amount, payment_type, created_at').eq('business_id', business.id),
+      supabase.from('debts').select('amount_total, amount_paid, status').eq('business_id', business.id),
+      supabase.from('products').select('stock_quantity, name').eq('business_id', business.id),
+      supabase.from('sales').select('id, total_amount, payment_type, created_at, customers(name)').eq('business_id', business.id).order('created_at', { ascending: false }).limit(5),
     ])
 
     const salesData = salesRes.data || []
-    const creditsData = creditsRes.data || []
+    const debtsData = debtsRes.data || []
     const productsData = productsRes.data || []
 
-    const cashTotal = salesData.filter(s => s.payment_type === 'cash' || s.payment_type === 'momo').reduce((a, s) => a + (s.total || 0), 0)
-    const creditTotal = creditsData.filter(c => c.status !== 'paid').reduce((a, c) => a + ((c.amount || 0) - (c.amount_paid || 0)), 0)
-    const lowStock = productsData.filter(p => p.stock_qty <= p.stock_alert).length
+    const cashTotal = salesData.filter(s => s.payment_type === 'cash').reduce((a, s) => a + (s.total_amount || 0), 0)
+    const creditTotal = debtsData.filter(d => d.status !== 'paid').reduce((a, d) => a + ((d.amount_total || 0) - (d.amount_paid || 0)), 0)
+    const lowStock = productsData.filter(p => p.stock_quantity <= LOW_STOCK_THRESHOLD).length
 
     setStats({
       sales: salesData.length,
-      credits: creditsData.filter(c => c.status !== 'paid').length,
+      credits: debtsData.filter(d => d.status !== 'paid').length,
       products: productsData.length,
       lowStock,
       cashTotal,
@@ -82,7 +88,7 @@ export default function Dashboard() {
     const chart = days.map(d => {
       const label = d.toLocaleDateString('fr-FR', { weekday: 'short' })
       const dayStr = d.toISOString().slice(0, 10)
-      const total = salesData.filter(s => s.created_at?.slice(0, 10) === dayStr).reduce((a, s) => a + (s.total || 0), 0)
+      const total = salesData.filter(s => s.created_at?.slice(0, 10) === dayStr).reduce((a, s) => a + (s.total_amount || 0), 0)
       return { day: label, total }
     })
     setChartData(chart)
@@ -217,18 +223,16 @@ export default function Dashboard() {
               {recentSales.map(sale => (
                 <div key={sale.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold
-                    ${sale.payment_type === 'cash' ? 'bg-green-100 text-green-700' :
-                      sale.payment_type === 'credit' ? 'bg-orange-100 text-orange-700' :
-                      'bg-blue-100 text-blue-700'}`}>
-                    {sale.payment_type === 'cash' ? 'C' : sale.payment_type === 'credit' ? 'CR' : 'M'}
+                    ${sale.payment_type === 'cash' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                    {sale.payment_type === 'cash' ? 'C' : 'CR'}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-navy-900 truncate">{sale.customer_name || 'Client anonyme'}</p>
+                    <p className="text-sm font-medium text-navy-900 truncate">{sale.customers?.name || 'Client anonyme'}</p>
                     <p className="text-xs text-gray-400">
                       {new Date(sale.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
                     </p>
                   </div>
-                  <p className="text-sm font-semibold text-navy-900 flex-shrink-0">{(sale.total || 0).toLocaleString()}</p>
+                  <p className="text-sm font-semibold text-navy-900 flex-shrink-0">{(sale.total_amount || 0).toLocaleString()}</p>
                 </div>
               ))}
             </div>

@@ -16,7 +16,13 @@ function Modal({ open, onClose, children }) {
 
 const UNITS = ['unité', 'kg', 'g', 'litre', 'cl', 'sac', 'carton', 'boîte', 'pièce', 'mètre']
 
-const defaultProduct = { name: '', unit: 'unité', price: '', stock_qty: '', stock_alert: '5' }
+// La colonne stock_alert n'existe pas en base (schéma products : id,
+// business_id, name, unit, price, stock_quantity — pas de seuil par
+// produit). On utilise donc un seuil fixe côté client plutôt que d'ajouter
+// une colonne, pour ne pas toucher au schéma partagé avec le bot.
+const LOW_STOCK_THRESHOLD = 5
+
+const defaultProduct = { name: '', unit: 'unité', price: '', stock_quantity: '' }
 
 export default function Stock() {
   const { business } = useAuth()
@@ -53,8 +59,7 @@ export default function Stock() {
       name: product.name,
       unit: product.unit,
       price: String(product.price),
-      stock_qty: String(product.stock_qty),
-      stock_alert: String(product.stock_alert),
+      stock_quantity: String(product.stock_quantity),
     })
     setShowModal(true)
   }
@@ -67,8 +72,7 @@ export default function Stock() {
       name: form.name,
       unit: form.unit,
       price: Number(form.price),
-      stock_qty: Number(form.stock_qty),
-      stock_alert: Number(form.stock_alert),
+      stock_quantity: Number(form.stock_quantity),
     }
     if (editing) {
       await supabase.from('products').update(payload).eq('id', editing.id)
@@ -88,16 +92,16 @@ export default function Stock() {
 
   const filtered = products.filter(p => {
     const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase())
-    const matchAlert = !filterAlert || p.stock_qty <= p.stock_alert
+    const matchAlert = !filterAlert || p.stock_quantity <= LOW_STOCK_THRESHOLD
     return matchSearch && matchAlert
   })
 
-  const alertCount = products.filter(p => p.stock_qty <= p.stock_alert).length
-  const stockValue = products.reduce((a, p) => a + p.stock_qty * p.price, 0)
+  const alertCount = products.filter(p => p.stock_quantity <= LOW_STOCK_THRESHOLD).length
+  const stockValue = products.reduce((a, p) => a + p.stock_quantity * p.price, 0)
 
   function stockStatus(p) {
-    if (p.stock_qty === 0) return { label: 'Rupture', cls: 'bg-red-100 text-red-700' }
-    if (p.stock_qty <= p.stock_alert) return { label: 'Stock faible', cls: 'bg-amber-100 text-amber-700' }
+    if (p.stock_quantity === 0) return { label: 'Rupture', cls: 'bg-red-100 text-red-700' }
+    if (p.stock_quantity <= LOW_STOCK_THRESHOLD) return { label: 'Stock faible', cls: 'bg-amber-100 text-amber-700' }
     return { label: 'En stock', cls: 'bg-green-100 text-green-700' }
   }
 
@@ -164,7 +168,7 @@ export default function Stock() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(p => {
             const status = stockStatus(p)
-            const pct = p.stock_alert > 0 ? Math.min(100, (p.stock_qty / (p.stock_alert * 3)) * 100) : 100
+            const pct = Math.min(100, (p.stock_quantity / (LOW_STOCK_THRESHOLD * 3)) * 100)
             return (
               <div key={p.id} className="bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md transition-all">
                 <div className="flex items-start justify-between mb-3">
@@ -177,7 +181,7 @@ export default function Stock() {
 
                 <div className="flex items-end justify-between mb-3">
                   <div>
-                    <p className="text-2xl font-bold text-navy-900">{p.stock_qty.toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-navy-900">{p.stock_quantity.toLocaleString()}</p>
                     <p className="text-xs text-gray-400">{p.unit}</p>
                   </div>
                   <p className="text-sm font-semibold text-gray-600">{p.price.toLocaleString()} FCFA</p>
@@ -185,7 +189,7 @@ export default function Stock() {
 
                 <div className="w-full bg-gray-100 rounded-full h-1.5 mb-4">
                   <div
-                    className={`h-1.5 rounded-full transition-all ${p.stock_qty === 0 ? 'bg-red-400' : p.stock_qty <= p.stock_alert ? 'bg-amber-400' : 'bg-brand-500'}`}
+                    className={`h-1.5 rounded-full transition-all ${p.stock_quantity === 0 ? 'bg-red-400' : p.stock_quantity <= LOW_STOCK_THRESHOLD ? 'bg-amber-400' : 'bg-brand-500'}`}
                     style={{ width: `${Math.max(2, pct)}%` }}
                   />
                 </div>
@@ -246,30 +250,18 @@ export default function Stock() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Quantité en stock</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={form.stock_qty}
-                  onChange={e => setForm(f => ({ ...f, stock_qty: e.target.value }))}
-                  placeholder="0"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Alerte stock bas</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={form.stock_alert}
-                  onChange={e => setForm(f => ({ ...f, stock_alert: e.target.value }))}
-                  placeholder="5"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Quantité en stock</label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={form.stock_quantity}
+                onChange={e => setForm(f => ({ ...f, stock_quantity: e.target.value }))}
+                placeholder="0"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <p className="text-xs text-gray-400 mt-1">Alerte stock faible automatique en dessous de {LOW_STOCK_THRESHOLD}.</p>
             </div>
           </div>
           <div className="px-6 pb-6 flex gap-3 border-t border-gray-100 pt-5">

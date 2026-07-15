@@ -15,13 +15,13 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
-      if (session?.user) fetchBusinesses(session.user.id)
+      if (session?.user) fetchBusinesses(session.user.email)
       else setLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
-      if (session?.user) fetchBusinesses(session.user.id)
+      if (session?.user) fetchBusinesses(session.user.email)
       else {
         setBusinesses([])
         setActiveBusinessId(null)
@@ -32,23 +32,67 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
+  // NOTE IMPORTANTE : businesses.user_id est une FK NOT NULL vers
+  // public.users(id) — la table d'identité du BOT WhatsApp, indexée par
+  // téléphone. Ce n'est PAS le même espace d'ID que auth.users (Supabase
+  // Auth). Le pont entre "compte web connecté" et "entreprise" est donc la
+  // colonne businesses.auth_email (déjà utilisée par l'Edge Function
+  // whatsapp-verify-otp pour la même raison), pas user_id.
+  // On NE fetch donc JAMAIS les entreprises par user_id ici.
+
   // Récupère TOUTES les entreprises de l'utilisateur (un compte peut en
-  // gérer plusieurs) + le profil qui retient laquelle est "active" (celle
-  // affichée dans le dashboard / les autres pages).
-  async function fetchBusinesses(userId) {
-    const [{ data: bizList }, { data: profile }] = await Promise.all([
-      supabase.from('businesses').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
-      supabase.from('profiles').select('active_business_id').eq('id', userId).maybeSingle(),
-    ])
+  // gérer plusieurs), liées via auth_email. L'entreprise "active" (celle
+  // affichée dans le dashboard) est retenue en local (localStorage) — il
+  // n'existe pas de table `profiles` en base, et on évite volontairement
+  // de réutiliser public.users.active_business_id qui appartient à l'état
+  // conversationnel du bot WhatsApp.
+  async function fetchBusinesses(userEmail) {
+    const { data: bizList } = await supabase
+      .from('businesses')
+      .select('*')
+      .eq('auth_email', userEmail)
+      .order('created_at', { ascending: true })
+
     const list = bizList || []
     setBusinesses(list)
-
-    let active = profile?.active_business_id
-    if (!active || !list.some(b => b.id === active)) {
-      active = list[0]?.id ?? null
-    }
-    setActiveBusinessId(active)
+    setActiveBusinessId(readStoredActiveBusiness(userEmail, list))
     setLoading(false)
+  }
+
+  function readStoredActiveBusiness(userEmail, list) {
+    let stored = null
+    try { stored = localStorage.getItem(activeBusinessStorageKey(userEmail)) } catch { /* noop */ }
+    return stored && list.some(b => b.id === stored) ? stored : (list[0]?.id ?? null)
+  }
+
+  function activeBusinessStorageKey(userEmail) {
+    return `yamobiz_active_business:${userEmail}`
+  }
+
+  function persistActiveBusiness(userEmail, businessId) {
+    try { localStorage.setItem(activeBusinessStorageKey(userEmail), businessId) } catch { /* noop */ }
+  }
+
+  // Récupère (ou crée) la ligne public.users correspondant à ce numéro —
+  // la table d'identité du bot, requise pour satisfaire la FK NOT NULL
+  // businesses.user_id. On ne gère pas le cycle de vie de cette table par
+  // ailleurs (c'est le bot qui la peuple normalement) ; on s'assure juste
+  // qu'une ligne existe avant de créer/rattacher une entreprise.
+  async function getOrCreateBotUserId(phone, name) {
+    const { data: existing } = await supabase.from('users').select('id').eq('phone', phone).maybeSingle()
+    if (existing) return existing.id
+
+    const { data: created, error } = await supabase.from('users').insert({ phone, name }).select('id').single()
+    if (error) {
+      // Course possible avec une insertion concurrente (ex: le bot) sur le
+      // même téléphone (contrainte UNIQUE) — on relit dans ce cas.
+      if (error.code === '23505') {
+        const { data: retry } = await supabase.from('users').select('id').eq('phone', phone).maybeSingle()
+        if (retry) return retry.id
+      }
+      throw error
+    }
+    return created.id
   }
 
   async function signUp(email, password, businessData) {
@@ -58,21 +102,26 @@ export function AuthProvider({ children }) {
       // Le business est créé ici, sur le web — le numéro est normalisé pour
       // que la connexion WhatsApp (basée sur le même champ `phone`) le
       // retrouve plus tard sans ambiguïté de format.
+      const phone = normalizePhone(businessData.phone)
+
+      // businesses.user_id doit pointer vers public.users(id) (identité du
+      // bot), pas vers auth.users(id) — on résout/crée cette ligne d'abord.
+      const botUserId = await getOrCreateBotUserId(phone, businessData.name)
+
       const { data: biz, error: bizError } = await supabase
         .from('businesses')
         .insert({
-          user_id: data.user.id,
+          user_id: botUserId,
           ...businessData,
-          phone: normalizePhone(businessData.phone),
+          phone,
+          // Pont entre ce compte Supabase Auth (web) et l'entreprise — la
+          // même colonne que celle déjà utilisée par whatsapp-verify-otp
+          // pour rattacher une session au bon business par téléphone.
+          auth_email: email,
         })
         .select()
         .single()
       if (bizError) throw bizError
-
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({ id: data.user.id, active_business_id: biz.id })
-      if (profileError) throw profileError
 
       // Important : onAuthStateChange peut avoir déclenché fetchBusinesses()
       // AVANT que cet insert ne soit terminé (course entre la session créée
@@ -81,6 +130,7 @@ export function AuthProvider({ children }) {
       // créer, pour ne pas dépendre du timing du listener.
       setBusinesses([biz])
       setActiveBusinessId(biz.id)
+      persistActiveBusiness(email, biz.id)
       setLoading(false)
     }
     return data
@@ -152,31 +202,32 @@ export function AuthProvider({ children }) {
   }
 
   async function refreshBusiness() {
-    if (user) await fetchBusinesses(user.id)
+    if (user) await fetchBusinesses(user.email)
   }
 
   // --- Gestion multi-entreprises ---
 
   // Change l'entreprise active (celle affichée dans le dashboard et les
-  // autres pages). Persisté en base pour survivre à un rechargement.
+  // autres pages). Persisté en local (pas de table `profiles` en base) —
+  // ça survit au rechargement sur ce même navigateur.
   async function switchBusiness(businessId) {
     if (!user || !businesses.some(b => b.id === businessId)) return
     setActiveBusinessId(businessId)
-    const { error } = await supabase
-      .from('profiles')
-      .upsert({ id: user.id, active_business_id: businessId })
-    if (error) throw error
+    persistActiveBusiness(user.email, businessId)
   }
 
   // Ajoute une nouvelle entreprise au compte, et la rend active.
   async function addBusiness(businessData) {
     if (!user) throw new Error('not_authenticated')
+    const phone = normalizePhone(businessData.phone)
+    const botUserId = await getOrCreateBotUserId(phone, businessData.name)
     const { data: biz, error } = await supabase
       .from('businesses')
       .insert({
-        user_id: user.id,
+        user_id: botUserId,
         ...businessData,
-        phone: normalizePhone(businessData.phone),
+        phone,
+        auth_email: user.email,
       })
       .select()
       .single()
@@ -188,7 +239,11 @@ export function AuthProvider({ children }) {
 
   async function updateBusiness(businessId, updates) {
     const payload = { ...updates }
-    if (payload.phone) payload.phone = normalizePhone(payload.phone)
+    if (payload.phone) {
+      payload.phone = normalizePhone(payload.phone)
+      // Le numéro change potentiellement l'identité bot rattachée.
+      payload.user_id = await getOrCreateBotUserId(payload.phone, payload.name ?? updates.name)
+    }
     const { data, error } = await supabase
       .from('businesses')
       .update(payload)
@@ -210,9 +265,7 @@ export function AuthProvider({ children }) {
     if (activeBusinessId === businessId) {
       const next = remaining[0]?.id ?? null
       setActiveBusinessId(next)
-      if (user) {
-        await supabase.from('profiles').upsert({ id: user.id, active_business_id: next })
-      }
+      if (user) persistActiveBusiness(user.email, next)
     }
   }
 

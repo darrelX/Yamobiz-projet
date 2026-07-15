@@ -42,26 +42,29 @@ export default function Reports() {
       startDate = new Date(now.getFullYear(), 0, 1)
     }
 
-    const [salesRes, creditsRes, productsRes] = await Promise.all([
-      supabase.from('sales').select('total, payment_type, created_at').eq('business_id', business.id).gte('created_at', startDate.toISOString()),
-      supabase.from('credits').select('amount, amount_paid, status').eq('business_id', business.id),
-      supabase.from('products').select('name, stock_qty, price').eq('business_id', business.id),
+    // sales.total_amount (pas total), pas de table `credits` (c'est
+    // `debts`, amount_total/amount_paid), products.stock_quantity, et
+    // payment_type n'a que 'cash'/'credit' (pas de 'momo').
+    const [salesRes, debtsRes, productsRes] = await Promise.all([
+      supabase.from('sales').select('total_amount, payment_type, created_at').eq('business_id', business.id).gte('created_at', startDate.toISOString()),
+      supabase.from('debts').select('amount_total, amount_paid, status').eq('business_id', business.id),
+      supabase.from('products').select('name, stock_quantity, price').eq('business_id', business.id),
     ])
 
     const sales = salesRes.data || []
-    const credits = creditsRes.data || []
+    const debts = debtsRes.data || []
     const products = productsRes.data || []
 
-    const cashSales = sales.filter(s => s.payment_type === 'cash' || s.payment_type === 'momo')
+    const cashSales = sales.filter(s => s.payment_type === 'cash')
     const creditSales = sales.filter(s => s.payment_type === 'credit')
-    const cashTotal = cashSales.reduce((a, s) => a + (s.total || 0), 0)
-    const creditTotal = creditSales.reduce((a, s) => a + (s.total || 0), 0)
+    const cashTotal = cashSales.reduce((a, s) => a + (s.total_amount || 0), 0)
+    const creditTotal = creditSales.reduce((a, s) => a + (s.total_amount || 0), 0)
     const caTotal = cashTotal + creditTotal
 
-    const pendingCredits = credits.filter(c => c.status !== 'paid').reduce((a, c) => a + ((c.amount || 0) - (c.amount_paid || 0)), 0)
-    const recoveredCredits = credits.filter(c => c.status === 'paid').reduce((a, c) => a + c.amount, 0)
+    const pendingCredits = debts.filter(d => d.status !== 'paid').reduce((a, d) => a + ((d.amount_total || 0) - (d.amount_paid || 0)), 0)
+    const recoveredCredits = debts.filter(d => d.status === 'paid').reduce((a, d) => a + d.amount_total, 0)
 
-    const stockValue = products.reduce((a, p) => a + p.stock_qty * p.price, 0)
+    const stockValue = products.reduce((a, p) => a + p.stock_quantity * p.price, 0)
 
     // Monthly breakdown for the year
     const monthlyData = Array.from({ length: 12 }, (_, i) => {
@@ -73,8 +76,8 @@ export default function Reports() {
       })
       return {
         name: MONTHS_FR[i],
-        cash: monthSales.filter(s => s.payment_type !== 'credit').reduce((a, s) => a + (s.total || 0), 0),
-        credit: monthSales.filter(s => s.payment_type === 'credit').reduce((a, s) => a + (s.total || 0), 0),
+        cash: monthSales.filter(s => s.payment_type !== 'credit').reduce((a, s) => a + (s.total_amount || 0), 0),
+        credit: monthSales.filter(s => s.payment_type === 'credit').reduce((a, s) => a + (s.total_amount || 0), 0),
       }
     }).slice(0, now.getMonth() + 1)
 
@@ -82,7 +85,6 @@ export default function Reports() {
     const pieData = [
       { name: 'Cash', value: cashSales.length || 0 },
       { name: 'Crédit', value: creditSales.length || 0 },
-      { name: 'MoMo', value: sales.filter(s => s.payment_type === 'momo').length || 0 },
     ].filter(d => d.value > 0)
 
     setReport({ caTotal, cashTotal, creditTotal, pendingCredits, recoveredCredits, stockValue, monthlyData, pieData, totalTransactions: sales.length })
@@ -121,7 +123,7 @@ export default function Reports() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { label: 'CA Total', value: `${report.caTotal.toLocaleString()} FCFA`, sub: periodLabel, color: 'text-brand-600 bg-brand-50' },
-              { label: 'Encaissé', value: `${report.cashTotal.toLocaleString()} FCFA`, sub: 'Cash + MoMo', color: 'text-green-600 bg-green-50' },
+              { label: 'Encaissé', value: `${report.cashTotal.toLocaleString()} FCFA`, sub: 'Ventes cash', color: 'text-green-600 bg-green-50' },
               { label: 'Créances ouvertes', value: `${report.pendingCredits.toLocaleString()} FCFA`, sub: 'À recouvrer', color: 'text-orange-600 bg-orange-50' },
               { label: 'Valeur du stock', value: `${report.stockValue.toLocaleString()} FCFA`, sub: 'Tous produits', color: 'text-blue-600 bg-blue-50' },
             ].map(({ label, value, sub, color }) => (
@@ -187,7 +189,7 @@ export default function Reports() {
                       contentStyle={{ borderRadius: 12, border: '1px solid #e5e7eb', fontSize: 12 }}
                       formatter={v => [`${v.toLocaleString()} FCFA`]}
                     />
-                    <Bar dataKey="cash" name="Cash/MoMo" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="cash" name="Cash" fill="#16a34a" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="credit" name="Crédit" fill="#f59e0b" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>

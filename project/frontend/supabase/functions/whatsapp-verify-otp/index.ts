@@ -1,7 +1,7 @@
 // Supabase Edge Function — POST /functions/v1/whatsapp-verify-otp
 // Body: { phone: string, code: string }
 // Réponse (succès) : { ok: true, email, token_hash }
-//   -> à échanger côté frontend via supabase.auth.verifyOtp({ email, token: token_hash, type: 'magiclink' })
+//   -> à échanger côté frontend via supabase.auth.verifyOtp({ token_hash, type: 'magiclink' })
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -73,25 +73,19 @@ Deno.serve(async (req) => {
 
     let authEmail = business.auth_email as string | null
 
-    if (!authEmail && business.user_id) {
-      // Cas normal : le business a été créé sur le web (email + mot de
-      // passe). On réutilise ce compte — WhatsApp devient un 2e moyen de
-      // se connecter au même user_id, pas un compte séparé.
-      const { data: userData, error: getUserErr } = await supabaseAdmin.auth.admin.getUserById(business.user_id)
-      if (getUserErr || !userData?.user?.email) {
-        // user_id enregistré mais compte introuvable côté Auth (donnée
-        // orpheline, ex. business créé/modifié manuellement) : on ne bloque
-        // pas, on retombe sur la création d'un compte propre ci-dessous.
-        console.error('getUserById error — falling back to synthetic account', getUserErr)
-      } else {
-        authEmail = userData.user.email
-        await supabaseAdmin.from('businesses').update({ auth_email: authEmail }).eq('id', business.id)
-      }
-    }
+    // NOTE IMPORTANTE : businesses.user_id est une FK NOT NULL vers
+    // public.users(id) — la table d'identité du bot, indexée par téléphone.
+    // Ce n'est PAS un UUID auth.users. Pour une entreprise créée par le bot
+    // (le cas normal ici), business.user_id pointe donc déjà correctement
+    // vers public.users et ne doit JAMAIS être réécrit avec un UUID
+    // auth.users — ça viole la FK. On ne touche donc plus jamais à
+    // business.user_id dans cette fonction, seulement à auth_email.
 
     if (!authEmail) {
-      // Cas business sans compte web valide : on crée/retrouve un compte
-      // Supabase synthétique pour pouvoir générer une session.
+      // Cas business sans compte web encore lié : on crée/retrouve un
+      // compte Supabase Auth "synthétique" pour pouvoir générer une
+      // session, et on se contente de rattacher auth_email — user_id
+      // reste tel quel (déjà correct côté public.users).
       authEmail = `wa+${phone.replace(/\D/g, '')}@yamobiz.app`
 
       const { data: existing } = await supabaseAdmin.auth.admin.listUsers()
@@ -110,10 +104,15 @@ Deno.serve(async (req) => {
         syntheticUserId = created.user.id
       }
 
-      await supabaseAdmin
+      const { error: linkErr } = await supabaseAdmin
         .from('businesses')
-        .update({ auth_email: authEmail, user_id: syntheticUserId })
+        .update({ auth_email: authEmail })
         .eq('id', business.id)
+
+      if (linkErr) {
+        console.error('businesses auth_email update error', linkErr)
+        return json({ ok: false, error: 'internal_error' })
+      }
     }
 
     const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({

@@ -3,11 +3,12 @@ import { Plus, X, Trash2, ShoppingCart, Search, ChevronDown } from 'lucide-react
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
-const PAYMENT_LABELS = { cash: 'Cash', credit: 'Crédit', momo: 'MoMo' }
+// sales.payment_type a un CHECK constraint en base qui n'autorise que
+// 'cash' et 'credit' — pas de 'momo' pour l'instant.
+const PAYMENT_LABELS = { cash: 'Cash', credit: 'Crédit' }
 const PAYMENT_COLORS = {
   cash: 'bg-green-100 text-green-700',
   credit: 'bg-orange-100 text-orange-700',
-  momo: 'bg-blue-100 text-blue-700',
 }
 
 function Modal({ open, onClose, children }) {
@@ -34,7 +35,6 @@ export default function Sales() {
   const [form, setForm] = useState({
     customer_name: '',
     payment_type: 'cash',
-    notes: '',
     items: [{ product_id: '', product_name: '', qty: 1, unit_price: 0 }],
   })
   const [saving, setSaving] = useState(false)
@@ -48,7 +48,9 @@ export default function Sales() {
   async function loadData() {
     setLoading(true)
     const [salesRes, productsRes] = await Promise.all([
-      supabase.from('sales').select('*, sale_items(*)').eq('business_id', business.id).order('created_at', { ascending: false }),
+      // sales n'a pas de colonne customer_name — le nom vient de la table
+      // customers via customer_id.
+      supabase.from('sales').select('*, sale_items(*), customers(name, phone)').eq('business_id', business.id).order('created_at', { ascending: false }),
       supabase.from('products').select('*').eq('business_id', business.id).order('name'),
     ])
     setSales(salesRes.data || [])
@@ -91,12 +93,35 @@ export default function Sales() {
     try {
       const saleTotal = validItems.reduce((s, i) => s + Number(i.qty) * Number(i.unit_price), 0)
 
+      // sales n'a pas de colonne customer_name : on résout (ou crée) le
+      // client dans la table `customers` et on ne relie que son id.
+      let customerId = null
+      if (form.customer_name.trim()) {
+        const { data: existingCustomer } = await supabase
+          .from('customers')
+          .select('id')
+          .eq('business_id', business.id)
+          .eq('name', form.customer_name.trim())
+          .maybeSingle()
+
+        if (existingCustomer) {
+          customerId = existingCustomer.id
+        } else {
+          const { data: newCustomer, error: custErr } = await supabase
+            .from('customers')
+            .insert({ business_id: business.id, name: form.customer_name.trim() })
+            .select('id')
+            .single()
+          if (custErr) throw custErr
+          customerId = newCustomer.id
+        }
+      }
+
       const { data: saleData, error: saleErr } = await supabase.from('sales').insert({
         business_id: business.id,
-        customer_name: form.customer_name || 'Client anonyme',
+        customer_id: customerId,
         payment_type: form.payment_type,
-        total: saleTotal,
-        notes: form.notes,
+        total_amount: saleTotal,
       }).select().single()
 
       if (saleErr) throw saleErr
@@ -105,7 +130,7 @@ export default function Sales() {
         sale_id: saleData.id,
         product_id: i.product_id || null,
         product_name: i.product_name,
-        qty: Number(i.qty),
+        quantity: Number(i.qty),
         unit_price: Number(i.unit_price),
         subtotal: Number(i.qty) * Number(i.unit_price),
       }))
@@ -116,26 +141,28 @@ export default function Sales() {
         if (item.product_id) {
           const prod = products.find(p => p.id === item.product_id)
           if (prod) {
-            await supabase.from('products').update({ stock_qty: Math.max(0, prod.stock_qty - Number(item.qty)) }).eq('id', item.product_id)
+            await supabase.from('products').update({ stock_quantity: Math.max(0, prod.stock_quantity - Number(item.qty)) }).eq('id', item.product_id)
           }
         }
       }
 
-      // If credit, create credit record
-      if (form.payment_type === 'credit' && form.customer_name) {
-        await supabase.from('credits').insert({
+      // Si vente à crédit : crée la dette liée (debts.sale_id est NOT NULL,
+      // une dette ne peut donc exister qu'attachée à une vente — c'est ici
+      // et uniquement ici qu'une créance peut naître).
+      if (form.payment_type === 'credit') {
+        await supabase.from('debts').insert({
           business_id: business.id,
           sale_id: saleData.id,
-          customer_name: form.customer_name,
-          amount: saleTotal,
+          customer_id: customerId,
+          amount_total: saleTotal,
           amount_paid: 0,
-          status: 'pending',
+          status: 'unpaid',
           due_date: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().slice(0, 10),
         })
       }
 
       setShowModal(false)
-      setForm({ customer_name: '', payment_type: 'cash', notes: '', items: [{ product_id: '', product_name: '', qty: 1, unit_price: 0 }] })
+      setForm({ customer_name: '', payment_type: 'cash', items: [{ product_id: '', product_name: '', qty: 1, unit_price: 0 }] })
       await loadData()
     } catch (err) {
       setFormError(err.message || 'Erreur lors de l\'enregistrement.')
@@ -151,13 +178,13 @@ export default function Sales() {
   }
 
   const filtered = sales.filter(s => {
-    const matchSearch = !search || s.customer_name?.toLowerCase().includes(search.toLowerCase())
+    const matchSearch = !search || s.customers?.name?.toLowerCase().includes(search.toLowerCase())
     const matchFilter = filter === 'all' || s.payment_type === filter
     return matchSearch && matchFilter
   })
 
-  const totalCA = sales.filter(s => s.payment_type !== 'credit').reduce((a, s) => a + (s.total || 0), 0)
-  const totalCredit = sales.filter(s => s.payment_type === 'credit').reduce((a, s) => a + (s.total || 0), 0)
+  const totalCA = sales.filter(s => s.payment_type !== 'credit').reduce((a, s) => a + (s.total_amount || 0), 0)
+  const totalCredit = sales.filter(s => s.payment_type === 'credit').reduce((a, s) => a + (s.total_amount || 0), 0)
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">
@@ -205,7 +232,7 @@ export default function Sales() {
           />
         </div>
         <div className="flex gap-2">
-          {[['all', 'Tous'], ['cash', 'Cash'], ['credit', 'Crédit'], ['momo', 'MoMo']].map(([v, l]) => (
+          {[['all', 'Tous'], ['cash', 'Cash'], ['credit', 'Crédit']].map(([v, l]) => (
             <button
               key={v}
               onClick={() => setFilter(v)}
@@ -246,7 +273,7 @@ export default function Sales() {
                     <td className="px-5 py-3.5 text-gray-500 whitespace-nowrap">
                       {new Date(sale.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
                     </td>
-                    <td className="px-5 py-3.5 font-medium text-navy-900">{sale.customer_name || '—'}</td>
+                    <td className="px-5 py-3.5 font-medium text-navy-900">{sale.customers?.name || '—'}</td>
                     <td className="px-5 py-3.5 text-gray-500 hidden sm:table-cell">
                       {sale.sale_items?.length || 0} article{(sale.sale_items?.length || 0) > 1 ? 's' : ''}
                     </td>
@@ -256,7 +283,7 @@ export default function Sales() {
                       </span>
                     </td>
                     <td className="px-5 py-3.5 text-right font-semibold text-navy-900">
-                      {(sale.total || 0).toLocaleString()} FCFA
+                      {(sale.total_amount || 0).toLocaleString()} FCFA
                     </td>
                     <td className="px-3 py-3.5">
                       <button onClick={() => deleteSale(sale.id)} className="p-1.5 text-gray-300 hover:text-red-400 transition-colors rounded-lg hover:bg-red-50">
@@ -304,7 +331,6 @@ export default function Sales() {
                 >
                   <option value="cash">Cash</option>
                   <option value="credit">Crédit</option>
-                  <option value="momo">Mobile Money</option>
                 </select>
               </div>
             </div>
@@ -371,17 +397,6 @@ export default function Sales() {
                 <Plus size={14} />
                 Ajouter un article
               </button>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Notes (optionnel)</label>
-              <textarea
-                value={form.notes}
-                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                rows={2}
-                placeholder="Remarques..."
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
-              />
             </div>
           </div>
 
