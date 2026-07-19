@@ -2,3 +2,5 @@
 *.env
 backend/.env
 node_modules/
+.vercel
+.env*
