@@ -110,6 +110,7 @@ export async function switchBusinessFromAi(phone, user, businessQuery) {
     const businesses = await getBusinessesByUserId(user.id);
 
     if (businesses.length <= 1) {
+        await resetToMenu(phone);
         return sendWhatsAppMessage(phone, t("business.onlyOne"));
     }
 
@@ -118,13 +119,18 @@ export async function switchBusinessFromAi(phone, user, businessQuery) {
     );
 
     if (!match) {
+        await resetToMenu(phone);
         const names = businesses.map(b => `• ${b.name}`).join("\n");
         return sendWhatsAppMessage(phone, t("business.switchNotFound", { query: businessQuery, list: names }));
     }
 
     await updateUser(user.id, { active_business_id: match.id });
 
-    return sendWhatsAppMessage(phone, t("business.switchDone", { name: match.name }));
+    await sendWhatsAppMessage(phone, t("business.switchDone", { name: match.name }), { skipMenuFooter: true });
+
+    // Menu principal de la NOUVELLE entreprise active (le reset d'étape est
+    // désormais garanti par showMainMenu lui-même).
+    return showMainMenu(phone, match);
 }
 
 export async function addBusinessFromAi(phone) {
@@ -133,6 +139,10 @@ export async function addBusinessFromAi(phone) {
 }
 
 export async function listBusinessesFromAi(phone, business, user) {
+
+    // Réinitialise l'étape : sans ça, si la liste est demandée au milieu d'un
+    // flow, le prochain choix du menu serait interprété par l'ancienne étape.
+    await resetToMenu(phone);
 
     const businesses = await getBusinessesByUserId(user.id);
 

@@ -9,8 +9,17 @@ import { MAIN_MENU_ITEMS } from "../utils/mainMenuItems.js";
 
 /**
  * Affiche le menu principal sous forme de liste WhatsApp interactive.
+ *
+ * IMPORTANT : réinitialise TOUJOURS l'étape de conversation sur MENU avant
+ * d'afficher. Afficher le menu principal en laissant la conversation sur une
+ * ancienne étape (ex: ACCOUNT_LANGUAGE, SALE_QUANTITY...) provoquait un bug où le
+ * prochain choix du menu ("8"...) était interprété comme une réponse à cette
+ * vieille étape ("langue non disponible", quantité invalide...). Centralisé ici
+ * pour que ce soit garanti partout, y compris dans les futurs points d'entrée IA.
  */
 export async function showMainMenu(phone, business) {
+
+    await resetToMenu(phone);
 
     const sections = [{
         title: t("common.mainMenuTitle"),
@@ -274,6 +283,11 @@ export async function dispatchIntent(phone, business, user, intentResult, contex
         }
 
         case "HELP": {
+            // On réinitialise l'étape : l'utilisateur qui demande de l'aide au milieu
+            // d'un flow ne doit pas voir son prochain message interprété comme une
+            // réponse à l'étape abandonnée. Le raccourci "Choisir" accroché au
+            // message d'aide lui permet ensuite de naviguer directement.
+            await resetToMenu(phone);
             await sendWhatsAppMessage(phone, t("menu.help"));
             return true;
         }

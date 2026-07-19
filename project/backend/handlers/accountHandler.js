@@ -8,6 +8,7 @@ import { deleteDebtsByBusiness } from "../services/debtService.js";
 import { deleteCustomersByBusiness } from "../services/customerService.js";
 import { deleteInvoicesByBusiness } from "../services/invoiceService.js";
 import { normalizeLanguageInput } from "../utils/language.js";
+import { isLanguageSupported } from "../locales/index.js";
 import { setCurrentLanguage } from "../utils/requestContext.js";
 import { t } from "../utils/i18n.js";
 import { STEPS } from "../utils/steps.js";
@@ -42,9 +43,10 @@ export async function startAccountDeleteFromAi(phone, business, user) {
 
 /**
  * Point d'entrée "change la langue en X" détecté par l'IA depuis n'importe quelle
- * rubrique (ex: "je veux que ce soit en anglais"). Applique directement — changer
- * une préférence d'affichage n'est pas une action sensible, comme les autres
- * changements de préférence (nom, ville...) qui ne demandent déjà pas de confirmation.
+ * rubrique (ex: "je veux que ce soit en anglais"). Applique directement si la
+ * langue demandée est supportée ; sinon informe l'utilisateur des langues
+ * disponibles (au lieu de stocker une valeur invalide en base, ce qui rendait le
+ * changement de langue silencieusement inopérant).
  */
 export async function changeLanguageFromAi(phone, business, user, languageRaw) {
 
@@ -55,8 +57,22 @@ export async function changeLanguageFromAi(phone, business, user, languageRaw) {
 
     const language = normalizeLanguageInput(String(languageRaw));
 
+    if (!language || !isLanguageSupported(language)) {
+        // On réinitialise le step AVANT d'afficher le menu principal : sinon la
+        // conversation resterait sur une étape périmée (ex: ACCOUNT_LANGUAGE) et le
+        // prochain choix du menu ("8"...) serait interprété comme une réponse à
+        // cette vieille étape au lieu d'un choix de menu.
+        await resetToMenu(phone);
+        await sendWhatsAppMessage(phone, t("account.languageUnsupported"));
+        return showMainMenu(phone, business);
+    }
+
     await updateUser(user.id, { language });
     setCurrentLanguage(language);
+
+    // Même raison : le step doit revenir sur MENU pour que le menu principal affiché
+    // juste après soit réellement fonctionnel (cf. commentaire ci-dessus).
+    await resetToMenu(phone);
 
     await sendWhatsAppMessage(phone, t("account.languageUpdated"));
 
@@ -135,6 +151,13 @@ async function handleAccountLanguage(phone, text, business, user) {
     }
 
     const language = normalizeLanguageInput(text);
+
+    // Langue non supportée : on RESTE sur l'étape ACCOUNT_LANGUAGE pour laisser
+    // l'utilisateur réessayer, au lieu d'enregistrer une valeur invalide qui
+    // ferait retomber toute l'interface sur le français par défaut.
+    if (!language || !isLanguageSupported(language)) {
+        return sendWhatsAppMessage(phone, t("account.languageUnsupported"));
+    }
 
     await updateUser(user.id, { language });
 
